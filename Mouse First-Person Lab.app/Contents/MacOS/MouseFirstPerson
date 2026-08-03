@@ -1,0 +1,28 @@
+#!/bin/zsh
+
+SCRIPT_DIR="${0:A:h}"
+PROJECT_ROOT="${SCRIPT_DIR:h:h:h}"
+PYTHON_RUNTIME="/opt/homebrew/Caskroom/miniforge/base/envs/Mice-BotEvade/bin/python"
+LOG_DIRECTORY="$PROJECT_ROOT/logs"
+LOG_FILE="$LOG_DIRECTORY/mouse_play_app_launcher.log"
+
+/bin/mkdir -p "$LOG_DIRECTORY"
+exec >>"$LOG_FILE" 2>&1
+/bin/date
+echo "Launching Mouse First-Person Lab from $PROJECT_ROOT"
+
+if [[ ! -x "$PYTHON_RUNTIME" ]]; then
+    /usr/bin/osascript -e 'display dialog "找不到 Mice-BotEvade Python 环境。请先按照项目 README 创建环境。" buttons {"好"} default button "好" with icon stop'
+    exit 1
+fi
+
+export CELLWORLD_CACHE="$PROJECT_ROOT/cellworld_cache"
+export MPLCONFIGDIR="$PROJECT_ROOT/.cache/matplotlib"
+export XDG_CACHE_HOME="$PROJECT_ROOT/.cache"
+export PYGAME_HIDE_SUPPORT_PROMPT=1
+
+cd "$PROJECT_ROOT" || exit 1
+"$PYTHON_RUNTIME" -B "$PROJECT_ROOT/mouse_play_app.py"
+STATUS=$?
+echo "Mouse First-Person Lab exited with status $STATUS"
+exit $STATUS

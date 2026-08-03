@@ -23,6 +23,7 @@ from gymnasium import Env
 from gymnasium import spaces
 from enum import Enum
 from util import find, normalize_angle, load_cell_ids_near_occlusion
+from first_person import FirstPersonVisionWrapper
 
 print("Using env3 (point-mass): (ax, ay) action, velocity in observation")
 
@@ -411,3 +412,57 @@ class BotEvadeEnv(Environment):
     def close(self):
         self.model.close()
         Env.close(self=self)
+
+
+class FirstPersonBotEvadeEnv(FirstPersonVisionWrapper):
+    """BotEvade with binocular mouse vision and egocentric VLA controls."""
+
+    def __init__(
+        self,
+        *args,
+        vision_width: int = 192,
+        vision_height: int = 128,
+        vision_fov: float = 120.0,
+        vision_camera_height: float = 0.025,
+        vision_eye_yaw: float = 40.0,
+        vision_eye_separation: float = 0.016,
+        vision_eye_forward_offset: float = 0.012,
+        observation_mode: str = "mouse",
+        action_mode: str = "egocentric_velocity",
+        max_body_turn_rate: float = 180.0,
+        max_head_turn_rate: float = 240.0,
+        head_yaw_limit: float = 60.0,
+        head_recenter_rate: float = 90.0,
+        velocity_gain: float = 5.0,
+        render_mode: str = "rgb_array",
+        **kwargs,
+    ):
+        observation_type = kwargs.get("observation_type", BotEvadeEnv.ObservationType.DATA)
+        if observation_type != BotEvadeEnv.ObservationType.DATA:
+            raise ValueError(
+                "FirstPersonBotEvadeEnv owns the pixel observation; "
+                "the base observation_type must be DATA",
+            )
+        kwargs["observation_type"] = BotEvadeEnv.ObservationType.DATA
+        kwargs.setdefault("render", False)
+        if action_mode != "passthrough":
+            kwargs.setdefault("action_type", BotEvadeEnv.ActionType.CONTINUOUS)
+        base_env = BotEvadeEnv(*args, **kwargs)
+        super().__init__(
+            base_env,
+            width=vision_width,
+            height=vision_height,
+            horizontal_fov=vision_fov,
+            camera_height=vision_camera_height,
+            eye_yaw_degrees=vision_eye_yaw,
+            eye_separation=vision_eye_separation,
+            eye_forward_offset=vision_eye_forward_offset,
+            observation_mode=observation_mode,
+            action_mode=action_mode,
+            max_body_turn_rate=max_body_turn_rate,
+            max_head_turn_rate=max_head_turn_rate,
+            head_yaw_limit=head_yaw_limit,
+            head_recenter_rate=head_recenter_rate,
+            velocity_gain=velocity_gain,
+            render_mode=render_mode,
+        )

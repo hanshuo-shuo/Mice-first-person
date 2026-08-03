@@ -23,6 +23,8 @@ Thumbs.db
 
 # Training artifacts
 logs/
+datasets/human_demos/
+.cache/
 *.zip
 *.pt
 *.pth
