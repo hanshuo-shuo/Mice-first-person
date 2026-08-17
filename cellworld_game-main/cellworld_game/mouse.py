@@ -70,7 +70,7 @@ class Mouse(Agent):
         self.dynamics.ax = 0.0
         self.dynamics.ay = 0.0
         return AgentState(location=self.start_state.location,
-                          direction=self.start_state.direction,
+                          body_heading=self.start_state.body_heading,
                           velocity=(0.0, 0.0))
 
     def step(self, delta_t: float) -> None:

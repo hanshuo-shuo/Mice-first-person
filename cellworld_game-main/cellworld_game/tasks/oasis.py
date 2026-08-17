@@ -1,4 +1,3 @@
-import random
 import typing
 from ..util import Point
 from ..model import Model
@@ -37,9 +36,6 @@ class Oasis(Model):
                  predator_prey_forward_speed_ratio: float = 0.15,
                  predator_prey_turning_speed_ratio: float = 0.175):
 
-        if goal_sequence_generator is None:
-            goal_sequence_generator = lambda: random.sample(range(0, len(goal_locations)), 3)
-
         self.start_location = (.05, .5)
         self.goal_locations = goal_locations
         self.goal_time = goal_time
@@ -63,8 +59,14 @@ class Oasis(Model):
                        agent_point_of_view=point_of_view.value,
                        max_line_of_sight_distance=max_line_of_sight_distance)
 
+        if self.goal_sequence_generator is None:
+            self.goal_sequence_generator = lambda: self.rng.sample(
+                range(0, len(self.goal_locations)),
+                3,
+            )
+
         self.prey = Mouse(start_state=AgentState(location=self.start_location,
-                                                 direction=0),
+                                                 body_heading=0),
                           navigation=self.loader.navigation,
                           max_forward_speed=prey_max_forward_speed,
                           max_turning_speed=prey_max_turning_speed)
@@ -74,7 +76,8 @@ class Oasis(Model):
                                   open_locations=self.loader.open_locations,
                                   navigation=self.loader.navigation,
                                   max_forward_speed=self.prey.max_forward_speed * predator_prey_forward_speed_ratio,
-                                  max_turning_speed=self.prey.max_turning_speed * predator_prey_turning_speed_ratio)
+                                  max_turning_speed=self.prey.max_turning_speed * predator_prey_turning_speed_ratio,
+                                  rng=self.rng)
 
             self.add_agent("predator", self.predator)
 
@@ -142,7 +145,7 @@ class Oasis(Model):
                 self.predator.set_destination(self.prey.state.location)
 
             if not self.predator.path:
-                self.predator.set_destination(random.choice(self.loader.open_locations))
+                self.predator.set_destination(self.rng.choice(self.loader.open_locations))
 
         if delta_t < self.puff_cool_down:
             self.puff_cool_down -= delta_t

@@ -47,8 +47,17 @@ class NavigationAgent(Agent):
         self.new_destination = destination
 
     def reset(self):
+        # Navigation state is episode-local.  In particular, leaving a
+        # pending destination or a non-zero controller output here makes the
+        # first step of the next episode depend on the previous episode.
+        self.new_destination = None
         self.destination = None
         self.path = []
+        self.navigation_plan_update_wait = 0
+        self.destination_wait = 0
+        self.dynamics.forward_speed = 0
+        self.dynamics.turn_speed = 0
+        self.active_navigation = True
         Agent.reset(self)
         
     def set_view_field(self, view_field: float):
@@ -92,7 +101,7 @@ class NavigationAgent(Agent):
 
                 destination_direction = Direction.degrees(src=self.state.location,
                                                           dst=self.next_step())
-                direction_error = Direction.difference(direction1=self.state.direction,
+                direction_error = Direction.difference(direction1=self.state.body_heading,
                                                        direction2=destination_direction)
                 normalized_direction_error = Direction.error_normalization(direction_error=direction_error)
 

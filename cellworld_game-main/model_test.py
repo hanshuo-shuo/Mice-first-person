@@ -16,7 +16,7 @@ model = cg.Model(render=True,
 
 cg.save_video_output(video_folder=".", model=model)
 
-mouse = cg.Mouse(start_state=cg.AgentState(location=(.05, .5),direction=0),
+mouse = cg.Mouse(start_state=cg.AgentState(location=(.05, .5),body_heading=0),
                  navigation=loader.navigation)
 
 robot = cg.Robot(start_locations=loader.robot_start_locations,

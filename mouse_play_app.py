@@ -151,6 +151,43 @@ class DemonstrationRecorder:
         "truncated",
         "sim_time",
         "privileged_state",
+        "puffed",
+        "capture_event",
+        "goal_event",
+        "capture_count",
+        "predator_sees_prey",
+        "prey_sees_predator",
+        "goal_achieved",
+        "prey_predator_distance",
+        "predator_geometric_los",
+        "predator_in_left_frustum",
+        "predator_in_right_frustum",
+        "predator_pixels_visible",
+        "predator_within_detection_range",
+        "predator_believed_visible",
+        "predator_visible_camera",
+        "predator_visible_geometric",
+        "minimum_distance",
+    )
+
+    TRANSITION_EVENT_NAMES = (
+        "puffed",
+        "capture_event",
+        "goal_event",
+        "capture_count",
+        "predator_sees_prey",
+        "prey_sees_predator",
+        "goal_achieved",
+        "prey_predator_distance",
+        "predator_geometric_los",
+        "predator_in_left_frustum",
+        "predator_in_right_frustum",
+        "predator_pixels_visible",
+        "predator_within_detection_range",
+        "predator_believed_visible",
+        "predator_visible_camera",
+        "predator_visible_geometric",
+        "minimum_distance",
     )
 
     def __init__(
@@ -187,10 +224,11 @@ class DemonstrationRecorder:
         self.session_dir = self.data_root / f"session_{timestamp}_{suffix}"
         self.session_dir.mkdir(parents=True, exist_ok=False)
         metadata = {
-            "format_version": 1,
+            "format_version": 3,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "storage": "compressed_npz_without_pickle",
             "transition_convention": "observation_t, action_t, reward_t, done_t",
+            "transition_event_names": list(self.TRANSITION_EVENT_NAMES),
             **self.session_metadata,
             "episodes": [],
         }
@@ -220,6 +258,7 @@ class DemonstrationRecorder:
         truncated: bool,
         sim_time: float,
         privileged_state: np.ndarray,
+        transition_events: Optional[Dict[str, Any]] = None,
         final_info: Optional[Dict[str, Any]] = None,
     ) -> Optional[Path]:
         if not self.active:
@@ -240,6 +279,67 @@ class DemonstrationRecorder:
         self._buffer["sim_time"].append(np.float32(sim_time))
         self._buffer["privileged_state"].append(
             np.asarray(privileged_state, dtype=np.float32).copy(),
+        )
+        info = final_info or {}
+        events = dict(info.get("transition_events", {}))
+        events.update(transition_events or {})
+        capture_event = bool(events.get("capture_event", events.get("puffed", False)))
+        goal_event = bool(events.get("goal_event", events.get("goal_achieved", False)))
+        self._buffer["puffed"].append(bool(events.get("puffed", capture_event)))
+        self._buffer["capture_event"].append(capture_event)
+        self._buffer["goal_event"].append(goal_event)
+        self._buffer["capture_count"].append(
+            int(events.get(
+                "capture_count",
+                events.get("cumulative_capture_count", info.get("capture_count", 0)),
+            )),
+        )
+        self._buffer["predator_sees_prey"].append(
+            bool(events.get("predator_sees_prey", False)),
+        )
+        self._buffer["prey_sees_predator"].append(
+            bool(events.get("prey_sees_predator", events.get("predator_visible_camera", False))),
+        )
+        self._buffer["goal_achieved"].append(
+            bool(events.get("goal_achieved", goal_event)),
+        )
+        self._buffer["prey_predator_distance"].append(
+            float(events.get("prey_predator_distance", events.get("minimum_distance", 0.0))),
+        )
+        geometric_los = bool(
+            events.get("predator_geometric_los", events.get("predator_visible_geometric", False)),
+        )
+        pixels_visible = bool(
+            events.get(
+                "predator_pixels_visible",
+                events.get("predator_visible_camera", events.get("prey_sees_predator", False)),
+            ),
+        )
+        believed_visible = bool(
+            events.get("predator_believed_visible", pixels_visible),
+        )
+        self._buffer["predator_geometric_los"].append(geometric_los)
+        self._buffer["predator_in_left_frustum"].append(
+            bool(events.get("predator_in_left_frustum", False)),
+        )
+        self._buffer["predator_in_right_frustum"].append(
+            bool(events.get("predator_in_right_frustum", False)),
+        )
+        self._buffer["predator_pixels_visible"].append(pixels_visible)
+        self._buffer["predator_within_detection_range"].append(
+            bool(events.get("predator_within_detection_range", believed_visible)),
+        )
+        self._buffer["predator_believed_visible"].append(believed_visible)
+        # Keep legacy names for readers that still consume them; their values
+        # now follow the canonical camera/geometric fields above.
+        self._buffer["predator_visible_camera"].append(
+            pixels_visible,
+        )
+        self._buffer["predator_visible_geometric"].append(
+            geometric_los,
+        )
+        self._buffer["minimum_distance"].append(
+            float(events.get("minimum_distance", 0.0)),
         )
 
         if terminated or truncated:
@@ -278,11 +378,55 @@ class DemonstrationRecorder:
             "privileged_state": np.stack(self._buffer["privileged_state"]).astype(
                 np.float32,
             ),
+            "puffed": np.asarray(self._buffer["puffed"], dtype=np.bool_),
+            "capture_event": np.asarray(self._buffer["capture_event"], dtype=np.bool_),
+            "goal_event": np.asarray(self._buffer["goal_event"], dtype=np.bool_),
+            "capture_count": np.asarray(self._buffer["capture_count"], dtype=np.int32),
+            "predator_sees_prey": np.asarray(
+                self._buffer["predator_sees_prey"], dtype=np.bool_,
+            ),
+            "prey_sees_predator": np.asarray(
+                self._buffer["prey_sees_predator"], dtype=np.bool_,
+            ),
+            "goal_achieved": np.asarray(self._buffer["goal_achieved"], dtype=np.bool_),
+            "prey_predator_distance": np.asarray(
+                self._buffer["prey_predator_distance"], dtype=np.float32,
+            ),
+            "predator_geometric_los": np.asarray(
+                self._buffer["predator_geometric_los"], dtype=np.bool_,
+            ),
+            "predator_in_left_frustum": np.asarray(
+                self._buffer["predator_in_left_frustum"], dtype=np.bool_,
+            ),
+            "predator_in_right_frustum": np.asarray(
+                self._buffer["predator_in_right_frustum"], dtype=np.bool_,
+            ),
+            "predator_pixels_visible": np.asarray(
+                self._buffer["predator_pixels_visible"], dtype=np.bool_,
+            ),
+            "predator_within_detection_range": np.asarray(
+                self._buffer["predator_within_detection_range"], dtype=np.bool_,
+            ),
+            "predator_believed_visible": np.asarray(
+                self._buffer["predator_believed_visible"], dtype=np.bool_,
+            ),
+            "predator_visible_camera": np.asarray(
+                self._buffer["predator_visible_camera"], dtype=np.bool_,
+            ),
+            "predator_visible_geometric": np.asarray(
+                self._buffer["predator_visible_geometric"], dtype=np.bool_,
+            ),
+            "minimum_distance": np.asarray(
+                self._buffer["minimum_distance"], dtype=np.float32,
+            ),
         }
         np.savez_compressed(temporary, **arrays)
         os.replace(temporary, destination)
 
         info = final_info or {}
+        last_capture_count = int(arrays["capture_count"][-1])
+        last_capture_event_count = int(arrays["capture_event"].sum())
+        last_goal_event_count = int(arrays["goal_event"].sum())
         episode_metadata = {
             "index": self._episode_index,
             "file": destination.name,
@@ -290,7 +434,16 @@ class DemonstrationRecorder:
             "return": float(arrays["reward"].sum()),
             "ended_reason": reason,
             "is_success": _json_scalar(info.get("is_success")),
-            "captures": _json_scalar(info.get("captures")),
+            "captures": _json_scalar(
+                info.get("captures", info.get("capture_count", last_capture_count)),
+            ),
+            "capture_count": _json_scalar(info.get("capture_count", last_capture_count)),
+            "capture_event_count": _json_scalar(
+                info.get("capture_event_count", last_capture_event_count),
+            ),
+            "goal_event_count": _json_scalar(
+                info.get("goal_event_count", last_goal_event_count),
+            ),
             "saved_at": datetime.now(timezone.utc).isoformat(),
         }
         _atomic_json_write(session_dir / f"{stem}.json", episode_metadata)
@@ -310,12 +463,14 @@ def make_environment(world_name: str = DEFAULT_WORLD):
     """Construct the interactive first-person environment after cache setup."""
 
     from botevade_gym import BotEvadeEnv, FirstPersonBotEvadeEnv
+    from reward import custom_reward
 
     return FirstPersonBotEvadeEnv(
         world_name=world_name,
         use_lppos=False,
         use_predator=True,
         max_step=1800,
+        reward_function=custom_reward,
         time_step=0.10,
         render=False,
         real_time=False,
@@ -343,7 +498,7 @@ PRIVILEGED_STATE_NAMES = (
     "head_yaw_degrees",
     "predator_x",
     "predator_y",
-    "predator_visible",
+    "predator_pixels_visible",
 )
 
 
@@ -355,8 +510,19 @@ def snapshot_privileged_state(env) -> np.ndarray:
     predator_y = math.nan
     if getattr(model, "use_predator", False) and hasattr(model, "predator"):
         predator_x, predator_y = model.predator.state.location
+    camera_visibility = {}
+    get_visibility = getattr(env, "get_predator_visibility", None)
+    if callable(get_visibility):
+        camera_visibility = get_visibility()
     prey_data = getattr(model, "prey_data", None)
-    predator_visible = float(bool(getattr(prey_data, "predator_visible", False)))
+    predator_pixels_visible = float(
+        bool(
+            camera_visibility.get(
+                "predator_pixels_visible",
+                getattr(prey_data, "predator_visible", False),
+            ),
+        ),
+    )
     return np.asarray(
         (
             prey.state.location[0],
@@ -367,7 +533,7 @@ def snapshot_privileged_state(env) -> np.ndarray:
             env.head_yaw_degrees,
             predator_x,
             predator_y,
-            predator_visible,
+            predator_pixels_visible,
         ),
         dtype=np.float32,
     )
@@ -517,6 +683,20 @@ class MousePlayApp:
             "action_range": [-1.0, 1.0],
             "proprio_names": list(self.env.proprio_names),
             "privileged_state_names": list(PRIVILEGED_STATE_NAMES),
+            "transition_event_names": list(DemonstrationRecorder.TRANSITION_EVENT_NAMES),
+            "camera_visibility_names": [
+                "predator_geometric_los",
+                "predator_in_left_frustum",
+                "predator_in_right_frustum",
+                "predator_pixels_visible",
+                "predator_within_detection_range",
+                "predator_believed_visible",
+            ],
+            "visual_training_label": "predator_pixels_visible",
+            "camera_fov_degrees_per_eye": self.env.renderer.horizontal_fov,
+            "camera_eye_yaw_degrees": self.env.eye_yaw_degrees,
+            "camera_far_clip": self.env.renderer.far_clip,
+            "camera_detection_range": self.env.detection_range,
             "image_layout": "HWC uint8 RGB, separate left/right eyes",
             "eye_shape": list(self.observation["image_left"].shape),
         }
@@ -630,6 +810,7 @@ class MousePlayApp:
                 truncated=bool(truncated),
                 sim_time=sim_time_t,
                 privileged_state=state_t,
+                transition_events=info.get("transition_events"),
                 final_info=info,
             )
             if saved is not None and not (terminated or truncated):
@@ -837,8 +1018,8 @@ class MousePlayApp:
 
         goal_distance = math.nan
         if self.env is not None:
-            prey_data = getattr(self.env.unwrapped.model, "prey_data", None)
-            goal_distance = float(getattr(prey_data, "prey_goal_distance", math.nan))
+            reward_terms = getattr(self.env.unwrapped, "reward_terms", {})
+            goal_distance = float(reward_terms.get("goal_distance", math.nan))
         info_text = (
             f"步数 {self.episode_steps}    "
             f"目标距离 {goal_distance:.3f}    "

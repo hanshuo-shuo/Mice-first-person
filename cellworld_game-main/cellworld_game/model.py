@@ -1,4 +1,6 @@
+import copy
 import math
+import random
 import time
 import typing
 import shapely as sp
@@ -37,6 +39,10 @@ class Model(EventDispatcher):
         self.predator_prey_line_of_sight_ratio = predator_prey_line_of_sight_ratio
         self.agents: typing.Dict[str, Agent] = {}
         self.visibility = Visibility(arena=self.arena, occlusions=self.occlusions)
+        # Keep simulation randomness on the model instead of relying on the
+        # process-global ``random`` module.  Environments can replace/seed
+        # this generator at reset time and snapshots can restore it exactly.
+        self.rng = random.Random()
         self.last_step = None
         self.time: float = 0
         self.running = False
@@ -142,6 +148,190 @@ class Model(EventDispatcher):
             agents_state[agent_name] = agent.state.copy()
         return agents_state
 
+    def set_rng(self,
+                rng: typing.Optional[random.Random] = None,
+                seed: typing.Optional[int] = None) -> None:
+        """Attach or seed the model's private Python RNG.
+
+        ``seed`` and ``rng`` are mutually exclusive.  Agents that own
+        stochastic behavior (currently ``Robot``) receive the same generator
+        object so reset-time placement and navigation choices share one
+        reproducible stream.
+        """
+
+        if rng is not None and seed is not None:
+            raise ValueError("Pass either rng or seed, not both")
+        if rng is not None:
+            self.rng = rng
+        elif seed is not None:
+            self.rng.seed(seed)
+
+        for agent in self.agents.values():
+            set_agent_rng = getattr(agent, "set_rng", None)
+            if set_agent_rng is not None:
+                set_agent_rng(self.rng)
+
+    @staticmethod
+    def _agent_state_to_dict(state: AgentState) -> dict:
+        return {
+            "location": tuple(state.location),
+            "body_heading": float(state.body_heading),
+            "velocity": tuple(state.velocity),
+        }
+
+    @staticmethod
+    def _agent_state_from_dict(state: dict) -> AgentState:
+        # ``direction`` was the old serialized orientation field.  Read it
+        # for old snapshots, but never keep it as a second physical truth.
+        body_heading = state.get("body_heading", state.get("direction", 0.0))
+        return AgentState(
+            location=tuple(state["location"]),
+            body_heading=float(body_heading),
+            velocity=tuple(state.get("velocity", (0.0, 0.0))),
+        )
+
+    @staticmethod
+    def _point_to_dict(point):
+        if point is None:
+            return None
+        return tuple(point)
+
+    def _get_agent_state_dict(self, agent: Agent) -> dict:
+        dynamics_state = {}
+        for attribute in (
+            "forward_speed",
+            "turn_speed",
+            "ax",
+            "ay",
+            "accel_scale",
+            "v_max",
+            "damping",
+        ):
+            if hasattr(agent.dynamics, attribute):
+                dynamics_state[attribute] = copy.deepcopy(
+                    getattr(agent.dynamics, attribute),
+                )
+
+        state = {
+            "state": self._agent_state_to_dict(agent.state),
+            "dynamics": dynamics_state,
+            "running": bool(agent.running),
+            "visible": bool(agent.visible),
+            "view_field": float(agent.view_field),
+            "collision": bool(agent.collision),
+        }
+
+        # NavigationAgent/Robot state is mutable and affects the next step.
+        for attribute in (
+            "new_destination",
+            "destination",
+            "navigation_plan_update_wait",
+            "destination_wait",
+            "active_navigation",
+            "render_path",
+            "last_destination_time",
+        ):
+            if hasattr(agent, attribute):
+                value = getattr(agent, attribute)
+                if attribute in {"new_destination", "destination"}:
+                    value = self._point_to_dict(value)
+                state[attribute] = copy.deepcopy(value)
+        if hasattr(agent, "path"):
+            state["path"] = [self._point_to_dict(point)
+                              for point in agent.path]
+        if hasattr(agent, "data"):
+            state["data"] = copy.deepcopy(agent.data)
+        return state
+
+    def _set_agent_state_dict(self, agent: Agent, state: dict) -> None:
+        agent.state = self._agent_state_from_dict(state["state"])
+        for attribute, value in state.get("dynamics", {}).items():
+            if hasattr(agent.dynamics, attribute):
+                setattr(agent.dynamics, attribute, copy.deepcopy(value))
+
+        agent.running = bool(state.get("running", agent.running))
+        agent.visible = bool(state.get("visible", agent.visible))
+        if "view_field" in state:
+            agent.view_field = float(state["view_field"])
+        if "collision" in state:
+            agent.collision = bool(state["collision"])
+
+        for attribute in (
+            "navigation_plan_update_wait",
+            "destination_wait",
+            "active_navigation",
+            "render_path",
+            "last_destination_time",
+        ):
+            if attribute in state and hasattr(agent, attribute):
+                setattr(agent, attribute, copy.deepcopy(state[attribute]))
+        for attribute in ("new_destination", "destination"):
+            if attribute in state and hasattr(agent, attribute):
+                setattr(agent, attribute, self._point_to_dict(state[attribute]))
+        if "path" in state and hasattr(agent, "path"):
+            agent.path = [self._point_to_dict(point) for point in state["path"]]
+        if "data" in state and hasattr(agent, "data"):
+            agent.data = copy.deepcopy(state["data"])
+
+    def get_state_dict(self) -> dict:
+        """Return a deep, branch-safe snapshot of the model state.
+
+        The snapshot contains all mutable state needed to continue a model
+        from the same point, including agent dynamics, navigation plans and
+        the model-local RNG.  Derived geometry is rebuilt on restore.
+        """
+
+        return {
+            "version": 1,
+            "time": float(self.time),
+            "step_count": int(self.step_count),
+            "episode_count": int(self.episode_count),
+            "running": bool(self.running),
+            "paused": bool(self.paused),
+            "last_step": None if self.last_step is None else float(self.last_step),
+            "agents": {
+                name: self._get_agent_state_dict(agent)
+                for name, agent in self.agents.items()
+            },
+            "python_rng_state": copy.deepcopy(self.rng.getstate()),
+        }
+
+    def set_state_dict(self, state: dict) -> None:
+        """Restore a snapshot produced by :meth:`get_state_dict`."""
+
+        if not isinstance(state, dict) or "agents" not in state:
+            raise TypeError("state must be a model state dictionary")
+        snapshot_agents = set(state["agents"])
+        unknown_agents = snapshot_agents - set(self.agents)
+        missing_agents = set(self.agents) - snapshot_agents
+        if unknown_agents or missing_agents:
+            raise ValueError(
+                "Snapshot agents do not match model agents: "
+                f"unknown={sorted(unknown_agents)}, missing={sorted(missing_agents)}",
+            )
+
+        if "python_rng_state" in state:
+            self.rng.setstate(copy.deepcopy(state["python_rng_state"]))
+        self.set_rng(self.rng)
+
+        for name, agent_state in state["agents"].items():
+            self._set_agent_state_dict(self.agents[name], agent_state)
+
+        self.time = float(state.get("time", 0.0))
+        self.step_count = int(state.get("step_count", 0))
+        self.episode_count = int(state.get("episode_count", self.episode_count))
+        self.running = bool(state.get("running", self.running))
+        self.paused = bool(state.get("paused", False))
+        self.last_step = state.get("last_step")
+        if self.last_step is not None:
+            self.last_step = float(self.last_step)
+
+        # Rebuild body/visibility geometry and directional line-of-sight from
+        # the restored physical states rather than storing derived objects.
+        self.set_agents_state(
+            agents_state={name: agent.state for name, agent in self.agents.items()},
+        )
+
     def set_agents_state(self,
                          agents_state: typing.Dict[str, AgentState],
                          agents_body_polygons: typing.Dict[str, Polygon] = None,
@@ -155,7 +345,7 @@ class Model(EventDispatcher):
                 agent.body_polygon = agent.get_body_polygon(state=agent_state)
 
             agent.visibility_polygon = self.visibility.get_visibility_polygon(src=agent_state.location,
-                                                                              direction=agent_state.direction,
+                                                                              direction=agent_state.body_heading,
                                                                               view_field=agent.view_field)
 
             self.__dispatch__(f"agent_{agent_name}_state_update", agent_state)
@@ -194,12 +384,20 @@ class Model(EventDispatcher):
             self.view.add_render_step(agent.render, z_index=100)
 
     def reset(self,
-              agents_state: typing.Dict[str, AgentState] = None):
+              agents_state: typing.Dict[str, AgentState] = None,
+              *,
+              seed: typing.Optional[int] = None,
+              rng: typing.Optional[random.Random] = None):
+        if seed is not None or rng is not None:
+            self.set_rng(rng=rng, seed=seed)
         if self.running:
             self.stop()
         self.__dispatch__("before_reset", self)
         self.running = True
         self.episode_count += 1
+        self.time = 0.0
+        self.step_count = 0
+        self.paused = False
         agents_start_state: typing.Dict[str, AgentState] = {}
         agents_body_polygon: typing.Dict[str, Polygon] = {}
         for name, agent in self.agents.items():
@@ -210,7 +408,6 @@ class Model(EventDispatcher):
 
         self.set_agents_state(agents_state=agents_start_state)
         self.last_step = time.time()
-        self.step_count = 0
         self.__dispatch__("after_reset", self)
 
     def stop(self):
@@ -240,12 +437,8 @@ class Model(EventDispatcher):
         new_x = x0 + vx * dt
         new_y = y0 + vy * dt
 
-        new_dir = agent.state.direction
-        if speed > 1e-4:
-            new_dir = math.degrees(math.atan2(vy, vx))
-
         cand = AgentState(location=(new_x, new_y),
-                          direction=new_dir,
+                          body_heading=agent.state.body_heading,
                           velocity=(vx, vy))
         return self._slide_collide(agent, cand, dt)
 
@@ -265,8 +458,7 @@ class Model(EventDispatcher):
 
         # x-only
         x_only = AgentState(location=(x0 + vx * dt, y0),
-                            direction=(math.degrees(math.atan2(0.0, vx))
-                                       if abs(vx) > 1e-4 else agent.state.direction),
+                            body_heading=agent.state.body_heading,
                             velocity=(vx, 0.0))
         if self.is_valid_state(agent.get_body_polygon(state=x_only),
                                agent.collision):
@@ -274,8 +466,7 @@ class Model(EventDispatcher):
 
         # y-only
         y_only = AgentState(location=(x0, y0 + vy * dt),
-                            direction=(math.degrees(math.atan2(vy, 0.0))
-                                       if abs(vy) > 1e-4 else agent.state.direction),
+                            body_heading=agent.state.body_heading,
                             velocity=(0.0, vy))
         if self.is_valid_state(agent.get_body_polygon(state=y_only),
                                agent.collision):
@@ -283,7 +474,7 @@ class Model(EventDispatcher):
 
         # fully stuck — stop
         return AgentState(location=(x0, y0),
-                          direction=agent.state.direction,
+                          body_heading=agent.state.body_heading,
                           velocity=(0.0, 0.0))
 
     def is_valid_state(self, agent_polygon: sp.Polygon, collisions: bool) -> bool:

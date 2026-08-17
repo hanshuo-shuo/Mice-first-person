@@ -14,6 +14,7 @@ over physics, reward, termination, or ``info``.
 
 from __future__ import annotations
 
+import copy
 import math
 import typing
 
@@ -23,6 +24,33 @@ from gymnasium import spaces
 
 
 RGBFrame = np.ndarray
+
+
+# Keep the billboard dimensions in one place so rendering and the camera
+# visibility label use the same projected predator silhouette.
+PREDATOR_OBJECT_WIDTH = 0.070
+PREDATOR_OBJECT_HEIGHT = 0.12
+PREDATOR_DEPTH_TOLERANCE = 0.026
+_PROJECT_DEFAULT_FORWARD_CLIP = object()
+
+
+def _state_body_heading(state) -> float:
+    """Read the canonical body heading with legacy-state compatibility."""
+
+    if hasattr(state, "body_heading"):
+        return float(state.body_heading)
+    return float(getattr(state, "direction", 0.0))
+
+
+def _set_state_body_heading(state, heading: float) -> None:
+    """Write body heading on canonical and legacy-compatible state objects."""
+
+    if hasattr(state, "body_heading"):
+        state.body_heading = float(heading)
+    elif hasattr(state, "direction"):
+        state.direction = float(heading)
+    else:
+        raise AttributeError("Agent state must expose body_heading")
 
 
 def _polygon_vertices(polygon: typing.Any) -> np.ndarray:
@@ -174,7 +202,7 @@ class FirstPersonRenderer:
         origin = np.asarray(prey.state.location, dtype=np.float64)
         if origin.shape != (2,):
             raise ValueError(f"Expected prey location shaped (2,), got {origin.shape}")
-        return origin, float(prey.state.direction)
+        return origin, _state_body_heading(prey.state)
 
     def _cast_walls(
         self,
@@ -277,13 +305,18 @@ class FirstPersonRenderer:
         object_height: float,
         direction_degrees: float,
         origin: np.ndarray,
+        max_forward_distance: typing.Any = _PROJECT_DEFAULT_FORWARD_CLIP,
     ) -> typing.Optional[typing.Tuple[float, int, int, int, int]]:
+        if max_forward_distance is _PROJECT_DEFAULT_FORWARD_CLIP:
+            max_forward_distance = self.far_clip
         angle = math.radians(direction_degrees)
         forward_axis = np.asarray((math.cos(angle), math.sin(angle)), dtype=np.float64)
         right_axis = np.asarray((math.sin(angle), -math.cos(angle)), dtype=np.float64)
         delta = np.asarray(location, dtype=np.float64) - origin
         forward = float(delta @ forward_axis)
-        if forward <= 0.006 or forward > self.far_clip:
+        if forward <= 0.006:
+            return None
+        if max_forward_distance is not None and forward > max_forward_distance:
             return None
         lateral = float(delta @ right_axis)
         center_x = self.width / 2.0 + self._focal_length * lateral / forward
@@ -376,6 +409,95 @@ class FirstPersonRenderer:
         target = frame[clipped_top : clipped_bottom + 1, clipped_left : clipped_right + 1]
         target[:] = target * (1.0 - alpha[..., None]) + patch * alpha[..., None]
 
+    def _object_has_visible_pixels(
+        self,
+        depth_buffer: np.ndarray,
+        projection: typing.Tuple[float, int, int, int, int],
+        patch_builder: typing.Callable[[int, int], typing.Tuple[np.ndarray, np.ndarray]],
+        depth_tolerance: float,
+    ) -> bool:
+        """Return whether a projected object contributes any camera pixels.
+
+        This deliberately follows the same billboard mask and wall-depth test
+        as :meth:`_blend_patch`.  It is therefore a renderer/camera label, not
+        the simulator's 360-degree line-of-sight result.
+        """
+
+        object_depth, left, right, top, bottom = projection
+        unclipped_width = max(right - left + 1, 1)
+        unclipped_height = max(bottom - top + 1, 1)
+        _, alpha = patch_builder(unclipped_height, unclipped_width)
+
+        clipped_left = max(left, 0)
+        clipped_right = min(right, self.width - 1)
+        clipped_top = max(top, 0)
+        clipped_bottom = min(bottom, self.height - 1)
+        if clipped_right < clipped_left or clipped_bottom < clipped_top:
+            return False
+
+        source_x0 = clipped_left - left
+        source_x1 = source_x0 + clipped_right - clipped_left + 1
+        source_y0 = clipped_top - top
+        source_y1 = source_y0 + clipped_bottom - clipped_top + 1
+        alpha = alpha[source_y0:source_y1, source_x0:source_x1]
+        visible_columns = object_depth - depth_tolerance <= depth_buffer[
+            clipped_left : clipped_right + 1
+        ]
+        return bool(np.any((alpha > 0.0) & visible_columns[None, :]))
+
+    def object_visibility(
+        self,
+        location: typing.Sequence[float],
+        origin: typing.Sequence[float],
+        direction_degrees: float,
+        object_width: float,
+        object_height: float,
+        depth_tolerance: float,
+    ) -> typing.Dict[str, bool]:
+        """Classify one billboard in this eye's frustum and rendered pixels.
+
+        ``in_frustum`` ignores ``far_clip`` so it answers the angular question
+        independently. ``pixels_visible`` uses the actual renderer clip and
+        wall depth buffer, which is the signal suitable for visual labels.
+        """
+
+        camera_origin = np.asarray(origin, dtype=np.float64)
+        if camera_origin.shape != (2,):
+            raise ValueError(f"Expected camera origin shaped (2,), got {camera_origin.shape}")
+
+        frustum_projection = self._project_object(
+            location,
+            object_width=object_width,
+            object_height=object_height,
+            direction_degrees=direction_degrees,
+            origin=camera_origin,
+            max_forward_distance=None,
+        )
+        render_projection = self._project_object(
+            location,
+            object_width=object_width,
+            object_height=object_height,
+            direction_degrees=direction_degrees,
+            origin=camera_origin,
+            max_forward_distance=self.far_clip,
+        )
+        pixels_visible = False
+        if render_projection is not None:
+            depth_buffer, _, _ = self._cast_walls(
+                camera_origin,
+                float(direction_degrees),
+            )
+            pixels_visible = self._object_has_visible_pixels(
+                depth_buffer,
+                render_projection,
+                self._predator_patch,
+                PREDATOR_DEPTH_TOLERANCE,
+            )
+        return {
+            "in_frustum": frustum_projection is not None,
+            "pixels_visible": pixels_visible,
+        }
+
     def _draw_objects(
         self,
         frame: np.ndarray,
@@ -404,6 +526,7 @@ class FirstPersonRenderer:
                 object_height=0.13 if active else 0.08,
                 direction_degrees=direction_degrees,
                 origin=origin,
+                max_forward_distance=self.far_clip,
             )
             if projection is not None:
                 builder = lambda h, w, active=active: self._goal_patch(h, w, active)
@@ -412,13 +535,14 @@ class FirstPersonRenderer:
         if getattr(self.model, "use_predator", False) and hasattr(self.model, "predator"):
             projection = self._project_object(
                 self.model.predator.state.location,
-                object_width=0.070,
-                object_height=0.12,
+                object_width=PREDATOR_OBJECT_WIDTH,
+                object_height=PREDATOR_OBJECT_HEIGHT,
                 direction_degrees=direction_degrees,
                 origin=origin,
+                max_forward_distance=self.far_clip,
             )
             if projection is not None:
-                objects.append((projection[0], projection, self._predator_patch, 0.026))
+                objects.append((projection[0], projection, self._predator_patch, PREDATOR_DEPTH_TOLERANCE))
 
         # Painter's algorithm handles object-object overlap; the wall depth
         # buffer independently clips every billboard column.
@@ -522,6 +646,7 @@ class FirstPersonVisionWrapper(gym.Wrapper):
         occlusion_height: float = 0.16,
         arena_wall_height: float = 0.22,
         far_clip: float = 2.0,
+        detection_range: typing.Optional[float] = None,
         observation_mode: str = "mouse",
         action_mode: str = "egocentric_velocity",
         eye_yaw_degrees: float = 40.0,
@@ -556,6 +681,8 @@ class FirstPersonVisionWrapper(gym.Wrapper):
             raise ValueError("head_yaw_limit must be positive and recenter rate non-negative")
         if velocity_gain <= 0:
             raise ValueError("velocity_gain must be positive")
+        if detection_range is not None and detection_range <= 0:
+            raise ValueError("detection_range must be positive when provided")
 
         super().__init__(env)
         model = getattr(env.unwrapped, "model", None)
@@ -572,6 +699,7 @@ class FirstPersonVisionWrapper(gym.Wrapper):
         self.eye_yaw_degrees = float(eye_yaw_degrees)
         self.eye_separation = float(eye_separation)
         self.eye_forward_offset = float(eye_forward_offset)
+        self.detection_range = float(far_clip if detection_range is None else detection_range)
         self.max_body_turn_rate = float(max_body_turn_rate)
         self.max_head_turn_rate = float(max_head_turn_rate)
         self.head_yaw_limit = float(head_yaw_limit)
@@ -644,10 +772,38 @@ class FirstPersonVisionWrapper(gym.Wrapper):
 
         self.state_observation: typing.Optional[np.ndarray] = None
         self._last_frame: typing.Optional[RGBFrame] = None
-        self._body_heading_degrees = float(prey.state.direction)
         self._head_yaw_degrees = 0.0
         self._last_body_turn_command = 0.0
         self._previous_action = self._zero_policy_action()
+        self._predator_visibility: typing.Dict[str, bool] = self._empty_predator_visibility()
+
+    @staticmethod
+    def _empty_predator_visibility() -> typing.Dict[str, bool]:
+        return {
+            "predator_geometric_los": False,
+            "predator_in_left_frustum": False,
+            "predator_in_right_frustum": False,
+            "predator_pixels_visible": False,
+            "predator_within_detection_range": False,
+            "predator_believed_visible": False,
+        }
+
+    @property
+    def predator_visibility(self) -> typing.Dict[str, bool]:
+        """Latest camera-derived predator visibility fields.
+
+        The canonical visual training target is
+        ``predator_pixels_visible``.  ``predator_geometric_los`` is retained
+        as a privileged diagnostic and is never used as that target.
+        """
+
+        return dict(self._predator_visibility)
+
+    def get_predator_visibility(self) -> typing.Dict[str, bool]:
+        """Return a fresh camera visibility snapshot for diagnostics."""
+
+        self._predator_visibility = self._compute_predator_visibility()
+        return self.predator_visibility
 
     @property
     def render_mode(self) -> str:
@@ -655,7 +811,7 @@ class FirstPersonVisionWrapper(gym.Wrapper):
 
     @property
     def body_heading_degrees(self) -> float:
-        return self._body_heading_degrees
+        return _state_body_heading(self.env.unwrapped.model.prey.state)
 
     @property
     def head_yaw_degrees(self) -> float:
@@ -671,8 +827,6 @@ class FirstPersonVisionWrapper(gym.Wrapper):
         return np.zeros((1,), dtype=np.float32)
 
     def _reset_embodiment_state(self) -> None:
-        prey = self.env.unwrapped.model.prey
-        self._body_heading_degrees = float(prey.state.direction)
         self._head_yaw_degrees = 0.0
         self._last_body_turn_command = 0.0
         self._previous_action = self._zero_policy_action()
@@ -699,10 +853,11 @@ class FirstPersonVisionWrapper(gym.Wrapper):
 
     def _advance_gaze(self, action: np.ndarray) -> None:
         self._last_body_turn_command = float(action[1])
-        self._body_heading_degrees = self._wrap_degrees(
-            self._body_heading_degrees
+        body_heading = self._wrap_degrees(
+            self.body_heading_degrees
             + self._last_body_turn_command * self.max_body_turn_rate * self._control_dt,
         )
+        _set_state_body_heading(self.env.unwrapped.model.prey.state, body_heading)
 
         if self.action_mode == "egocentric_velocity_head":
             head_command = float(action[2])
@@ -737,7 +892,7 @@ class FirstPersonVisionWrapper(gym.Wrapper):
                 "with v_max, accel_scale, and damping",
             )
 
-        heading = math.radians(self._body_heading_degrees)
+        heading = math.radians(self.body_heading_degrees)
         forward_axis = np.asarray((math.cos(heading), math.sin(heading)), dtype=np.float64)
         desired_velocity = forward_axis * float(action[0]) * float(dynamics.v_max)
         current_velocity = np.asarray(prey.state.velocity, dtype=np.float64)
@@ -756,7 +911,7 @@ class FirstPersonVisionWrapper(gym.Wrapper):
         prey = self.env.unwrapped.model.prey
         location = np.asarray(prey.state.location, dtype=np.float64)
         direction = self._wrap_degrees(
-            self._body_heading_degrees + self._head_yaw_degrees,
+            self.body_heading_degrees + self._head_yaw_degrees,
         )
         return location, direction
 
@@ -774,6 +929,102 @@ class FirstPersonVisionWrapper(gym.Wrapper):
             head_direction + side * self.eye_yaw_degrees,
         )
         return eye_origin, eye_direction
+
+    def _compute_predator_visibility(self) -> typing.Dict[str, bool]:
+        """Compute visibility from the two rendered camera frusta.
+
+        The simulator's directional LOS is intentionally not used here.  The
+        geometric field is an unbounded 360-degree occlusion diagnostic;
+        angular frusta, rendered pixels, and the camera detection range are
+        classified independently.
+        """
+
+        visibility = self._empty_predator_visibility()
+        model = self.env.unwrapped.model
+        if not getattr(model, "use_predator", False) or not hasattr(model, "predator"):
+            return visibility
+
+        prey_location = np.asarray(model.prey.state.location, dtype=np.float64)
+        predator_location = np.asarray(model.predator.state.location, dtype=np.float64)
+        distance = float(np.linalg.norm(predator_location - prey_location))
+        visibility["predator_within_detection_range"] = distance <= self.detection_range
+
+        model_visibility = getattr(model, "visibility", None)
+        if model_visibility is not None and hasattr(model_visibility, "line_of_sight"):
+            visibility["predator_geometric_los"] = bool(
+                model_visibility.line_of_sight(prey_location, predator_location),
+            )
+        else:
+            # Small test/fallback environments may expose only the cached LOS.
+            line_of_sight = getattr(model, "line_of_sight", None)
+            if line_of_sight is not None:
+                try:
+                    visibility["predator_geometric_los"] = bool(
+                        line_of_sight["prey", "predator"],
+                    )
+                except (KeyError, TypeError, IndexError):
+                    visibility["predator_geometric_los"] = False
+
+        left_origin, left_direction = self._eye_pose(+1.0)
+        right_origin, right_direction = self._eye_pose(-1.0)
+        left = self.renderer.object_visibility(
+            predator_location,
+            origin=left_origin,
+            direction_degrees=left_direction,
+            object_width=PREDATOR_OBJECT_WIDTH,
+            object_height=PREDATOR_OBJECT_HEIGHT,
+            depth_tolerance=PREDATOR_DEPTH_TOLERANCE,
+        )
+        right = self.renderer.object_visibility(
+            predator_location,
+            origin=right_origin,
+            direction_degrees=right_direction,
+            object_width=PREDATOR_OBJECT_WIDTH,
+            object_height=PREDATOR_OBJECT_HEIGHT,
+            depth_tolerance=PREDATOR_DEPTH_TOLERANCE,
+        )
+        visibility["predator_in_left_frustum"] = bool(left["in_frustum"])
+        visibility["predator_in_right_frustum"] = bool(right["in_frustum"])
+        visibility["predator_pixels_visible"] = bool(
+            left["pixels_visible"] or right["pixels_visible"],
+        )
+        visibility["predator_believed_visible"] = bool(
+            visibility["predator_pixels_visible"]
+            and visibility["predator_within_detection_range"],
+        )
+        return visibility
+
+    def _augment_camera_info(self, info: typing.Optional[dict]) -> dict:
+        """Attach canonical camera labels and update legacy aliases."""
+
+        augmented = dict(info or {})
+        model = self.env.unwrapped.model
+        # Preserve the ordinary Gym wrapper contract for environments without
+        # a predator (including lightweight callers that use the wrapper only
+        # to test image observations).
+        if not getattr(model, "use_predator", False) or not hasattr(model, "predator"):
+            return augmented
+        if "transition_events" not in augmented and not hasattr(model, "visibility"):
+            return augmented
+        visibility = self.predator_visibility
+        events = dict(augmented.get("transition_events", {}))
+        events.update(visibility)
+        # Compatibility aliases.  New consumers should use the six canonical
+        # fields above; the old names now follow camera semantics in this
+        # first-person wrapper instead of simulator 360-degree LOS.
+        events["predator_visible_camera"] = bool(visibility["predator_pixels_visible"])
+        events["predator_visible_geometric"] = bool(visibility["predator_geometric_los"])
+        events["prey_sees_predator"] = bool(visibility["predator_believed_visible"])
+        augmented["transition_events"] = events
+        for name, value in visibility.items():
+            augmented[name] = bool(value)
+        augmented["predator_visible_camera"] = bool(visibility["predator_pixels_visible"])
+        augmented["predator_visible_geometric"] = bool(visibility["predator_geometric_los"])
+        augmented["prey_sees_predator"] = bool(visibility["predator_believed_visible"])
+        augmented["predator_visible_last_step"] = int(
+            visibility["predator_believed_visible"],
+        )
+        return augmented
 
     def _render_single_eye(self) -> RGBFrame:
         origin, direction = self._camera_centre_pose()
@@ -800,7 +1051,7 @@ class FirstPersonVisionWrapper(gym.Wrapper):
             getattr(prey.state, "velocity", (0.0, 0.0)),
             dtype=np.float64,
         )
-        heading = math.radians(self._body_heading_degrees)
+        heading = math.radians(self.body_heading_degrees)
         forward_axis = np.asarray((math.cos(heading), math.sin(heading)), dtype=np.float64)
         dynamics = getattr(prey, "dynamics", None)
         v_max = max(float(getattr(dynamics, "v_max", 1.0)), 1e-8)
@@ -827,14 +1078,69 @@ class FirstPersonVisionWrapper(gym.Wrapper):
                 "proprio": self._proprioception(),
                 "previous_action": self._previous_action.copy(),
             }
+        self._predator_visibility = self._compute_predator_visibility()
         if self.render_mode == "human":
             self.renderer.show(self._last_frame)
         return observation
 
+    def get_state_dict(self) -> dict:
+        """Snapshot the wrapped simulation and first-person embodiment state."""
+
+        get_base_state = getattr(self.env, "get_state_dict", None)
+        if get_base_state is None:
+            raise AttributeError("The wrapped environment does not support state snapshots")
+        state = get_base_state()
+        state["first_person"] = {
+            # Retained as a compatibility/diagnostic field.  The physical
+            # model state is the only source of truth for this value.
+            "body_heading_degrees": float(self.body_heading_degrees),
+            "head_yaw_degrees": float(self._head_yaw_degrees),
+            "last_body_turn_command": float(self._last_body_turn_command),
+            "previous_action": self._previous_action.copy(),
+            "state_observation": copy.deepcopy(self.state_observation),
+            "last_frame": copy.deepcopy(self._last_frame),
+            "predator_visibility": copy.deepcopy(self._predator_visibility),
+        }
+        return state
+
+    def set_state_dict(self, state: dict) -> None:
+        """Restore a snapshot produced by :meth:`get_state_dict`."""
+
+        set_base_state = getattr(self.env, "set_state_dict", None)
+        if set_base_state is None:
+            raise AttributeError("The wrapped environment does not support state snapshots")
+        set_base_state(state)
+        embodiment_state = state.get("first_person", {})
+        if "head_yaw_degrees" in embodiment_state:
+            self._head_yaw_degrees = float(embodiment_state["head_yaw_degrees"])
+        if "last_body_turn_command" in embodiment_state:
+            self._last_body_turn_command = float(embodiment_state["last_body_turn_command"])
+        if "previous_action" in embodiment_state:
+            self._previous_action = np.array(
+                embodiment_state["previous_action"],
+                dtype=np.float32,
+                copy=True,
+            )
+        if "state_observation" in embodiment_state:
+            self.state_observation = copy.deepcopy(embodiment_state["state_observation"])
+        if "last_frame" in embodiment_state:
+            self._last_frame = copy.deepcopy(embodiment_state["last_frame"])
+        if "predator_visibility" in embodiment_state:
+            restored_visibility = self._empty_predator_visibility()
+            restored_visibility.update(
+                {
+                    key: bool(value)
+                    for key, value in embodiment_state["predator_visibility"].items()
+                    if key in restored_visibility
+                },
+            )
+            self._predator_visibility = restored_visibility
+
     def reset(self, **kwargs):
         self.state_observation, info = self.env.reset(**kwargs)
         self._reset_embodiment_state()
-        return self._vision_observation(), info
+        observation = self._vision_observation()
+        return observation, self._augment_camera_info(info)
 
     def step(self, action):
         if self.action_mode == "passthrough":
@@ -852,12 +1158,10 @@ class FirstPersonVisionWrapper(gym.Wrapper):
             base_action,
         )
         if self.action_mode == "passthrough":
-            self._body_heading_degrees = float(
-                self.env.unwrapped.model.prey.state.direction,
-            )
             self._head_yaw_degrees = 0.0
             self._last_body_turn_command = 0.0
-        return self._vision_observation(), reward, terminated, truncated, info
+        observation = self._vision_observation()
+        return observation, reward, terminated, truncated, self._augment_camera_info(info)
 
     def render_first_person(self, mode: typing.Optional[str] = None):
         """Render the current prey camera without advancing simulation state."""
@@ -869,6 +1173,7 @@ class FirstPersonVisionWrapper(gym.Wrapper):
             _, _, frame = self._render_binocular()
         else:
             frame = self._render_single_eye()
+        self._predator_visibility = self._compute_predator_visibility()
         self._last_frame = frame
         if selected_mode == "human":
             self.renderer.show(frame)

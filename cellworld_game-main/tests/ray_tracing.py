@@ -53,7 +53,7 @@ class RayTracing:
 
     def render(self, perspective: AgentState, screen: pygame.Surface):
         screen_width, screen_height = screen.get_size()
-        start_angle = perspective.direction - self.horizontal_view_field / 2
+        start_angle = perspective.body_heading - self.horizontal_view_field / 2
         step_angle = self.horizontal_view_field / screen_width
         start = sp.Point(perspective.location)
         screen.fill((0, 0, 0))

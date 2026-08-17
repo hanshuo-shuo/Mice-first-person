@@ -6,6 +6,9 @@ from collections import deque
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CELLWORLD_PATH = os.path.join(BASE_DIR, "cellworld_game-main")
+# Use the bundled resources before importing Cellworld.  Otherwise standalone
+# demos try to download the world even though the repository is offline-ready.
+os.environ.setdefault("CELLWORLD_CACHE", os.path.join(BASE_DIR, "cellworld_cache"))
 if CELLWORLD_PATH not in sys.path:
     sys.path.insert(0, CELLWORLD_PATH)
 
@@ -23,6 +26,9 @@ from util import normalize_angle
 from first_person import FirstPersonVisionWrapper
 
 print("Using oasis_gym (point-mass): (ax, ay) action, velocity in observation")
+
+TransitionEvents = typing.Dict[str, typing.Union[bool, float]]
+RewardTerms = typing.Dict[str, float]
 
 # Fields that get stacked across frames
 STACK_FIELDS = [
@@ -109,7 +115,11 @@ class Environment(Env):
             raise ValueError("Event handler not registered")
         self.event_handlers[event_name].append(handler)
 
-    def reset(self, options: typing.Optional[dict] = None, seed=None):
+    def reset(self,
+              *,
+              seed=None,
+              options: typing.Optional[dict] = None):
+        super().reset(seed=seed)
         self.__handle_event__("reset", options, seed)
 
     def step(self, action):
@@ -143,7 +153,7 @@ class OasisEnv(Environment):
         goal_sequence_generator: typing.Optional[typing.Callable] = None,
         use_predator: bool = True,
         max_step: int = 600,
-        reward_function: typing.Callable[[OasisObservation], float] = lambda x: 0,
+        reward_function: typing.Callable[[RewardTerms], float] = lambda terms: 0,
         time_step: float = .25,
         render: bool = False,
         real_time: bool = False,
@@ -218,12 +228,142 @@ class OasisEnv(Environment):
         self.frame_stack = deque(maxlen=self.frame_stack_k)
 
         self.episode_reward = 0
+        self.capture_event_count = 0
+        self.goal_event_count = 0
         self.step_count = 0
         self.time_prey_seen_predator = -1
         self.predator_visible_last_step = 0
         self.prey_visible_last_step = 0
+        self._previous_goal_location = None
+        self.transition_events: TransitionEvents = self._empty_transition_events()
+        self.reward_terms: RewardTerms = self._empty_reward_terms()
+        self._step_minimum_distance = 0.0
 
         Environment.__init__(self)
+
+    @staticmethod
+    def _empty_transition_events() -> TransitionEvents:
+        return {
+            "capture_event": False,
+            "goal_event": False,
+            "predator_geometric_los": False,
+            "predator_in_left_frustum": False,
+            "predator_in_right_frustum": False,
+            "predator_pixels_visible": False,
+            "predator_within_detection_range": False,
+            "predator_believed_visible": False,
+            "predator_visible_camera": False,
+            "predator_visible_geometric": False,
+            "minimum_distance": 0.0,
+        }
+
+    @staticmethod
+    def _empty_reward_terms() -> RewardTerms:
+        return {
+            "capture": 0.0,
+            "goal_achieved": 0.0,
+            "goal_event": 0.0,
+            "goal_distance": 0.0,
+            "goals_remaining": 0.0,
+            "finished": 0.0,
+        }
+
+    def _minimum_predator_distance(self) -> float:
+        if not self.model.use_predator:
+            return 0.0
+        prey_location = self.model.prey.state.location
+        predator_location = self.model.predator.state.location
+        return float(math.hypot(
+            prey_location[0] - predator_location[0],
+            prey_location[1] - predator_location[1],
+        ))
+
+    def _set_transition_data(
+        self,
+        *,
+        capture_event: typing.Optional[bool] = None,
+        goal_event: typing.Optional[bool] = None,
+        minimum_distance: typing.Optional[float] = None,
+    ) -> None:
+        """Snapshot named events and reward terms for the current transition."""
+
+        model = self.model
+        if capture_event is None:
+            capture_event = bool(model.puffed)
+        if goal_event is None:
+            goal_event = False
+        if minimum_distance is None:
+            minimum_distance = self._minimum_predator_distance()
+
+        predator_visible_geometric = (
+            self._compute_predator_visible() if model.use_predator else False
+        )
+        self.transition_events = {
+            "capture_event": bool(capture_event),
+            "goal_event": bool(goal_event),
+            # The base Oasis environment has no first-person camera.  The
+            # wrapper replaces these fields with the actual left/right pixel
+            # visibility after rendering; this base record remains geometric.
+            "predator_geometric_los": bool(predator_visible_geometric),
+            "predator_in_left_frustum": False,
+            "predator_in_right_frustum": False,
+            "predator_pixels_visible": False,
+            "predator_within_detection_range": False,
+            "predator_believed_visible": False,
+            "predator_visible_camera": False,
+            "predator_visible_geometric": bool(predator_visible_geometric),
+            "minimum_distance": float(minimum_distance),
+        }
+        goal_distance = float(model.prey_goal_distance)
+        self.reward_terms = {
+            "capture": float(self.transition_events["capture_event"]),
+            "goal_achieved": float(self.transition_events["goal_event"]),
+            "goal_event": float(self.transition_events["goal_event"]),
+            "goal_distance": goal_distance,
+            "goals_remaining": float(len(model.goal_sequence)),
+            "finished": float(not model.running),
+        }
+
+    def _base_info(self) -> dict:
+        info = {
+            "transition_events": dict(self.transition_events),
+            "reward_terms": dict(self.reward_terms),
+            "prey_visible_last_step": int(self.prey_visible_last_step),
+            "predator_visible_last_step": int(self.predator_visible_last_step),
+        }
+        for name in (
+            "predator_geometric_los",
+            "predator_in_left_frustum",
+            "predator_in_right_frustum",
+            "predator_pixels_visible",
+            "predator_within_detection_range",
+            "predator_believed_visible",
+        ):
+            info[name] = bool(self.transition_events[name])
+        info["predator_visible_camera"] = bool(
+            self.transition_events["predator_visible_camera"],
+        )
+        info["predator_visible_geometric"] = bool(
+            self.transition_events["predator_visible_geometric"],
+        )
+        if self.model.use_predator:
+            info["predator_x"] = self.model.predator.state.location[0]
+            info["predator_y"] = self.model.predator.state.location[1]
+        return info
+
+    @staticmethod
+    def _goal_transitioned(
+        previous_location: typing.Optional[typing.Tuple[float, float]],
+        current_location: typing.Optional[typing.Tuple[float, float]],
+    ) -> bool:
+        """Return whether the active goal advanced during this transition.
+
+        ``current_location`` becomes ``None`` after the prey completes the
+        final return-to-start goal.  That terminal change is still a goal
+        event and must receive the same event reward as intermediate goals.
+        """
+
+        return previous_location is not None and current_location != previous_location
 
     def _compute_predator_visible(self) -> bool:
         """Check if prey can see predator via line of sight."""
@@ -266,7 +406,7 @@ class OasisEnv(Environment):
             obs.predator_visible = True
             obs.predator_x = self.model.predator.state.location[0]
             obs.predator_y = self.model.predator.state.location[1]
-            obs.predator_direction = normalize_angle(math.radians(self.model.predator.state.direction))
+            obs.predator_direction = normalize_angle(math.radians(self.model.predator.state.body_heading))
             self.predator_visible_last_step = 1
         else:
             obs.predator_visible = False
@@ -314,7 +454,18 @@ class OasisEnv(Environment):
         self.step_count += 1
         truncated = (self.step_count >= self.max_step)
         obs = self.__update_observation__()
-        reward = self.reward_function(obs)
+        goal_event = self._goal_transitioned(
+            self._previous_goal_location,
+            self.model.goal_location,
+        )
+        self._set_transition_data(
+            goal_event=goal_event,
+            minimum_distance=self._step_minimum_distance,
+        )
+        self.capture_event_count += int(self.transition_events["capture_event"])
+        self.goal_event_count += int(self.transition_events["goal_event"])
+        self._previous_goal_location = self.model.goal_location
+        reward = float(self.reward_function(self.reward_terms))
         self.episode_reward += reward
 
         if self.model.puffed:
@@ -323,43 +474,52 @@ class OasisEnv(Environment):
         done = not self.model.running
         if done or truncated:
             survived = 1 if done and self.model.puff_count == 0 else 0
-            info = {
+            info = self._base_info()
+            info.update({
                 "captures": self.model.puff_count,
                 "reward": self.episode_reward,
                 "is_success": survived,
                 "survived": survived,
                 "agents": {},
-                "prey_visible_last_step": prey_visible_last_step,
-                "predator_visible_last_step": predator_visible_last_step,
-            }
-            if self.model.use_predator:
-                info["predator_x"] = self.model.predator.state.location[0]
-                info["predator_y"] = self.model.predator.state.location[1]
+                "capture_event_count": self.capture_event_count,
+                "goal_event_count": self.goal_event_count,
+                "episode_metrics": {
+                    "capture_count": int(self.model.puff_count),
+                    "goal_count": int(self.goal_event_count),
+                    "survived": bool(survived),
+                },
+            })
+            info["prey_visible_last_step"] = prey_visible_last_step
+            info["predator_visible_last_step"] = predator_visible_last_step
         else:
-            info = {
-                "prey_visible_last_step": prey_visible_last_step,
-                "predator_visible_last_step": predator_visible_last_step,
-            }
-            if self.model.use_predator:
-                info["predator_x"] = self.model.predator.state.location[0]
-                info["predator_y"] = self.model.predator.state.location[1]
+            info = self._base_info()
+            info["prey_visible_last_step"] = prey_visible_last_step
+            info["predator_visible_last_step"] = predator_visible_last_step
 
         return obs, reward, done, truncated, info
 
     def step(self, action):
         self.set_action(action=action)
+        self._step_minimum_distance = self._minimum_predator_distance()
         model_t = self.model.time + self.time_step
         while self.model.running and self.model.time < model_t:
             self.model.step()
+            self._step_minimum_distance = min(
+                self._step_minimum_distance,
+                self._minimum_predator_distance(),
+            )
         Environment.step(self, action=action)
         return self.__step__()
 
     def __reset__(self):
         self.episode_reward = 0
+        self.capture_event_count = 0
+        self.goal_event_count = 0
         self.step_count = 0
         self.time_prey_seen_predator = -1
         self.predator_visible_last_step = 0
         self.prey_visible_last_step = 0
+        self._step_minimum_distance = self._minimum_predator_distance()
 
         self.frame_stack.clear()
         obs = self.__update_observation__()
@@ -368,11 +528,22 @@ class OasisEnv(Environment):
         for _ in range(self.frame_stack_k):
             self.frame_stack.append(np.array(current_stack, copy=True))
         obs = self.__get_stacked_observation__()
-        return obs, {}
+        self._previous_goal_location = self.model.goal_location
+        self._set_transition_data(capture_event=False, goal_event=False)
+        return obs, {
+            "transition_events": dict(self.transition_events),
+            "reward_terms": dict(self.reward_terms),
+        }
 
-    def reset(self, options: typing.Optional[dict] = None, seed=None):
-        self.model.reset()
+    def reset(self,
+              *,
+              seed=None,
+              options: typing.Optional[dict] = None):
         Environment.reset(self, options=options, seed=seed)
+        if seed is not None:
+            model_seed = int(self.np_random.integers(0, 2**63 - 1))
+            self.model.set_rng(seed=model_seed)
+        self.model.reset()
         return self.__reset__()
 
     def close(self):
@@ -390,6 +561,8 @@ class FirstPersonOasisEnv(FirstPersonVisionWrapper):
         vision_height: int = 128,
         vision_fov: float = 120.0,
         vision_camera_height: float = 0.025,
+        vision_far_clip: float = 2.0,
+        vision_detection_range: typing.Optional[float] = None,
         vision_eye_yaw: float = 40.0,
         vision_eye_separation: float = 0.016,
         vision_eye_forward_offset: float = 0.012,
@@ -413,6 +586,8 @@ class FirstPersonOasisEnv(FirstPersonVisionWrapper):
             height=vision_height,
             horizontal_fov=vision_fov,
             camera_height=vision_camera_height,
+            far_clip=vision_far_clip,
+            detection_range=vision_detection_range,
             eye_yaw_degrees=vision_eye_yaw,
             eye_separation=vision_eye_separation,
             eye_forward_offset=vision_eye_forward_offset,

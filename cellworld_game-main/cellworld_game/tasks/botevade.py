@@ -1,4 +1,4 @@
-import random
+import copy
 from ..agent import Agent
 from ..util import Point
 from ..model import Model
@@ -75,7 +75,7 @@ class BotEvade(Model):
         self.register_event(event_name="puff")
 
         self.prey = Mouse(start_state=AgentState(location=(.05, .5),
-                                                 direction=0),
+                                                 body_heading=0),
                           navigation=self.loader.navigation,
                           max_forward_speed=prey_max_forward_speed,
                           max_turning_speed=prey_max_turning_speed)
@@ -85,7 +85,8 @@ class BotEvade(Model):
                                   open_locations=self.loader.open_locations,
                                   navigation=self.loader.navigation,
                                   max_forward_speed=self.prey.max_forward_speed * predator_prey_forward_speed_ratio,
-                                  max_turning_speed=self.prey.max_turning_speed * predator_prey_turning_speed_ratio)
+                                  max_turning_speed=self.prey.max_turning_speed * predator_prey_turning_speed_ratio,
+                                  rng=self.rng)
 
             self.add_agent("predator", self.predator)
 
@@ -144,7 +145,7 @@ class BotEvade(Model):
                     self.predator.set_destination(self.prey.state.location)
 
             if not self.predator.path:
-                self.predator.set_destination(random.choice(self.loader.open_locations))
+                self.predator.set_destination(self.rng.choice(self.loader.open_locations))
 
         if delta_t < self.puff_cool_down:
             self.puff_cool_down -= delta_t
@@ -161,14 +162,51 @@ class BotEvade(Model):
     def __on_quit__(self):
         self.stop()
 
-    def reset(self):
-        Model.reset(self)
-        self.prey_data.goal_achieved = False
-        self.prey_data.predator_visible = False
-        self.prey_data.prey_visible = False
-        self.prey_data.puff_count = 0
+    def reset(self,
+              agents_state=None,
+              *,
+              seed=None,
+              rng=None):
+        Model.reset(self,
+                    agents_state=agents_state,
+                    seed=seed,
+                    rng=rng)
+        self.prey_data.reset()
         self.puff_cool_down = 0
         self.__update_state__()
+
+    def get_state_dict(self) -> dict:
+        state = Model.get_state_dict(self)
+        state["task"] = {
+            "goal_location": None if self.goal_location is None
+            else tuple(self.goal_location),
+            "puff_cool_down": float(self.puff_cool_down),
+            "prey_data": {
+                attribute: copy.deepcopy(getattr(self.prey_data, attribute))
+                for attribute in (
+                    "puffed",
+                    "goal_achieved",
+                    "predator_visible",
+                    "prey_visible",
+                    "predator_prey_distance",
+                    "prey_goal_distance",
+                    "puff_count",
+                )
+            },
+        }
+        return state
+
+    def set_state_dict(self, state: dict) -> None:
+        Model.set_state_dict(self, state)
+        task_state = state.get("task", {})
+        if "goal_location" in task_state:
+            goal_location = task_state["goal_location"]
+            self.goal_location = None if goal_location is None else tuple(goal_location)
+        if "puff_cool_down" in task_state:
+            self.puff_cool_down = float(task_state["puff_cool_down"])
+        for attribute, value in task_state.get("prey_data", {}).items():
+            if hasattr(self.prey_data, attribute):
+                setattr(self.prey_data, attribute, copy.deepcopy(value))
 
     def step(self) -> float:
         delta_t = Model.step(self)

@@ -75,14 +75,14 @@ class DualEvade(Model):
             self.add_agent("predator", self.predator)
 
         self.prey_1 = Mouse(start_state=AgentState(location=(.05, .5),
-                                                   direction=0),
+                                                   body_heading=0),
                             navigation=self.loader.navigation,
                             max_forward_speed=prey_max_forward_speed)
 
         self.add_agent("prey_1", self.prey_1)
 
         self.prey_2 = Mouse(start_state=AgentState(location=(.05, .5),
-                                                   direction=0),
+                                                   body_heading=0),
                             navigation=self.loader.navigation,
                             max_forward_speed=prey_max_forward_speed)
 

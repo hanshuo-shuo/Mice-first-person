@@ -63,7 +63,9 @@ python -c "import cellworld_game; print('OK')"
 
 #### Prey dynamics: PointMaze-style (ax, ay)
 
-Prey use 2D point-mass dynamics (`(ax, ay)` action, `(vx, vy)` state) matching `gymnasium-robotics/PointMaze` — semi-implicit Euler + linear damping. The old unicycle + A\* + PID (`set_destination`) is replaced; predator (`Robot`) keeps unicycle navigation. 
+Prey use 2D point-mass dynamics (`(ax, ay)` action, `(vx, vy)` state) matching `gymnasium-robotics/PointMaze` — semi-implicit Euler + linear damping. The old unicycle + A\* + PID (`set_destination`) is replaced; predator (`Robot`) keeps unicycle navigation.
+
+`AgentState.body_heading` is the single physical body orientation, stored independently from velocity so sideways sliding does not rotate the agent. First-person yaw actions update this field; collision geometry, simulator visibility, top-down rendering, camera rays, and proprioception all read it. Head yaw remains a separate relative gaze state in the first-person wrapper.
 
 #### Mouse first-person observations for VLM/VLA policies
 
@@ -94,6 +96,9 @@ env = FirstPersonBotEvadeEnv(
     vision_width=192,       # per eye
     vision_height=128,
     vision_fov=120.0,       # per eye
+    vision_far_clip=2.0,
+    vision_detection_range=2.0,
+    vision_eye_yaw=40.0,    # outward yaw per eye
     observation_mode="mouse",
     action_mode="egocentric_velocity",
     render_mode="rgb_array",
@@ -186,9 +191,31 @@ right_images = episode["image_right"]     # (T, 128, 192, 3), uint8
 proprio = episode["proprio"]              # (T, 3), float32
 actions = episode["action"]               # (T, 3), float32
 rewards = episode["reward"]               # (T,), float32
+# Reward is the BotEvade task reward: -1 per capture, +1 on goal.
+puffed = episode["puffed"]                # (T,), bool
+capture_events = episode["capture_event"]
+capture_count = episode["capture_count"]  # cumulative count at t
+predator_sees_prey = episode["predator_sees_prey"]
+goal_achieved = episode["goal_achieved"]
+prey_predator_distance = episode["prey_predator_distance"]
+goal_events = episode["goal_event"]
+minimum_distance = episode["minimum_distance"]
+# Canonical camera/geometry visibility labels.  Use pixels_visible as the
+# visual risk-critic target; geometric_los is only a privileged diagnostic.
+predator_geometric_los = episode["predator_geometric_los"]
+predator_in_left_frustum = episode["predator_in_left_frustum"]
+predator_in_right_frustum = episode["predator_in_right_frustum"]
+predator_pixels_visible = episode["predator_pixels_visible"]
+predator_within_detection_range = episode["predator_within_detection_range"]
+predator_believed_visible = episode["predator_believed_visible"]
 ```
 
-`privileged_state` is saved only for trajectory diagnostics and evaluation; a vision-only VLA does not need to consume it. The app uses `cellworld_cache/`, which is pre-populated for world `21_05`, so normal launches work offline.
+`predator_pixels_visible` is the camera-ground-truth label for a visual risk
+critic. The legacy `predator_visible_camera` and `predator_visible_geometric`
+arrays remain for compatibility, but should not be used in place of the
+canonical fields.
+
+`privileged_state` is saved only for trajectory diagnostics and evaluation; a vision-only VLA does not need to consume it. The Gym entry points and playable app automatically use `cellworld_cache/`, which is pre-populated for world `21_05`, so the documented first-person launches work offline.
 
 The equivalent command-line launch is:
 
@@ -201,6 +228,12 @@ conda run -n Mice-BotEvade python -B mouse_play_app.py
 ---
 
 ### Training
+
+The human-collection environment explicitly wires `reward.custom_reward`, so
+the saved `reward` and episode `return` are not the default zero reward.
+Reward callbacks receive the environment's named `reward_terms` mapping
+(`capture`, `goal_achieved`, `goal_distance`, and related task terms), not the
+flattened frame-stacked observation.
 
 ```bash
 # SAC single-prey (BotEvade)

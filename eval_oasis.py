@@ -40,6 +40,11 @@ def main():
     for ep in range(args.episodes):
         obs, _ = env.reset()
         ep_reward = 0.0
+        capture_events = 0
+        goal_events = 0
+        camera_visible_steps = 0
+        geometric_visible_steps = 0
+        minimum_distance = np.inf
         done = truncated = False
 
         while not (done or truncated):
@@ -47,19 +52,47 @@ def main():
             obs, reward, done, truncated, info = env.step(action)
             ep_reward += reward
 
-        captures = info.get("captures", 0)
-        survived = info.get("survived", 0)
-        results.append({"reward": ep_reward, "captures": captures, "survived": survived})
-        print(f"  ep {ep+1:3d}  reward={ep_reward:7.2f}  captures={captures}  survived={survived}")
+            events = info["transition_events"]
+            capture_events += int(events["capture_event"])
+            goal_events += int(events["goal_event"])
+            # These are intentionally different labels.  The base Oasis
+            # environment has no first-person renderer, so its pixel label is
+            # false; use a first-person environment when measuring camera
+            # visibility rather than falling back to simulator LOS.
+            camera_visible_steps += int(events["predator_pixels_visible"])
+            geometric_visible_steps += int(events["predator_geometric_los"])
+            minimum_distance = min(minimum_distance, float(events["minimum_distance"]))
+
+        episode_metrics = info["episode_metrics"]
+        survived = int(bool(episode_metrics["survived"]))
+        result = {
+            "reward": ep_reward,
+            "capture_events": capture_events,
+            "goal_events": goal_events,
+            "camera_visible_steps": camera_visible_steps,
+            "geometric_visible_steps": geometric_visible_steps,
+            "minimum_distance": minimum_distance,
+            "survived": survived,
+        }
+        results.append(result)
+        print(
+            f"  ep {ep+1:3d}  reward={ep_reward:7.2f} "
+            f"capture_events={capture_events} goal_events={goal_events} "
+            f"survived={survived}"
+        )
 
     rewards   = [r["reward"]   for r in results]
-    captures  = [r["captures"] for r in results]
+    captures  = [r["capture_events"] for r in results]
+    goals     = [r["goal_events"] for r in results]
     survivals = [r["survived"] for r in results]
+    min_distances = [r["minimum_distance"] for r in results]
     print("\n--- Summary ---")
     print(f"  episodes      : {args.episodes}")
     print(f"  predator ratio: {args.predator_ratio}")
     print(f"  reward   mean={np.mean(rewards):.2f}  std={np.std(rewards):.2f}")
     print(f"  captures mean={np.mean(captures):.2f}  std={np.std(captures):.2f}")
+    print(f"  goals    mean={np.mean(goals):.2f}  std={np.std(goals):.2f}")
+    print(f"  min dist mean={np.nanmean(min_distances):.4f}")
     print(f"  survival rate: {np.mean(survivals)*100:.1f}%")
 
     env.close()

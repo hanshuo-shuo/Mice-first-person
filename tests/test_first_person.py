@@ -45,6 +45,20 @@ class _Model:
         self.running = False
 
 
+class _GeometricVisibility:
+    @staticmethod
+    def line_of_sight(src, dst):
+        return True
+
+
+class _CameraModel(_Model):
+    def __init__(self, occlusions=None):
+        super().__init__()
+        self.arena = _Polygon([(0, 0), (5, 0), (5, 5), (0, 5)])
+        self.occlusions = list(occlusions or [])
+        self.visibility = _GeometricVisibility()
+
+
 class _DummyEnv(gym.Env):
     def __init__(self):
         self.model = _Model()
@@ -70,6 +84,12 @@ class _DummyEnv(gym.Env):
         self.model.prey.state.velocity = (float(action[0]), float(action[1]))
         state = np.asarray(self.model.prey.state.location, dtype=np.float32)
         return state, 1.25, False, self.steps >= 3, {"step": self.steps}
+
+
+class _CameraEnv(_DummyEnv):
+    def __init__(self, occlusions=None):
+        super().__init__()
+        self.model = _CameraModel(occlusions=occlusions)
 
 
 class FirstPersonRendererTest(unittest.TestCase):
@@ -168,6 +188,65 @@ class FirstPersonRendererTest(unittest.TestCase):
         self.assertFalse(np.array_equal(before["image_left"], after["image_left"]))
         np.testing.assert_allclose(after["previous_action"], [0.0, 1.0, 1.0])
         env.close()
+
+    def test_camera_visibility_separates_geometry_frustum_range_and_pixels(self):
+        env = FirstPersonVisionWrapper(
+            _CameraEnv(),
+            width=192,
+            height=128,
+            observation_mode="mouse",
+            action_mode="passthrough",
+        )
+        try:
+            env.reset()
+            env.unwrapped.model.prey.state.location = (2.5, 2.5)
+            env.unwrapped.model.prey.state.direction = 0.0
+
+            env.unwrapped.model.predator.state.location = (1.5, 2.5)
+            behind = env.get_predator_visibility()
+            self.assertTrue(behind["predator_geometric_los"])
+            self.assertFalse(behind["predator_in_left_frustum"])
+            self.assertFalse(behind["predator_in_right_frustum"])
+            self.assertFalse(behind["predator_pixels_visible"])
+            self.assertTrue(behind["predator_within_detection_range"])
+            self.assertFalse(behind["predator_believed_visible"])
+
+            env.unwrapped.model.predator.state.location = (4.0, 2.5)
+            front = env.get_predator_visibility()
+            self.assertTrue(front["predator_in_left_frustum"])
+            self.assertTrue(front["predator_in_right_frustum"])
+            self.assertTrue(front["predator_pixels_visible"])
+            self.assertTrue(front["predator_within_detection_range"])
+            self.assertTrue(front["predator_believed_visible"])
+
+            env.unwrapped.model.predator.state.location = (4.7, 2.5)
+            beyond_detection = env.get_predator_visibility()
+            self.assertTrue(beyond_detection["predator_pixels_visible"])
+            self.assertFalse(beyond_detection["predator_within_detection_range"])
+            self.assertFalse(beyond_detection["predator_believed_visible"])
+        finally:
+            env.close()
+
+    def test_camera_pixels_are_removed_by_occlusion_but_frustum_remains_true(self):
+        occlusion = _Polygon([(3.0, 2.0), (3.2, 2.0), (3.2, 3.0), (3.0, 3.0)])
+        env = FirstPersonVisionWrapper(
+            _CameraEnv(occlusions=[occlusion]),
+            width=192,
+            height=128,
+            observation_mode="mouse",
+            action_mode="passthrough",
+        )
+        try:
+            env.reset()
+            env.unwrapped.model.prey.state.location = (2.5, 2.5)
+            env.unwrapped.model.predator.state.location = (4.0, 2.5)
+            visibility = env.get_predator_visibility()
+            self.assertTrue(visibility["predator_in_left_frustum"])
+            self.assertTrue(visibility["predator_in_right_frustum"])
+            self.assertFalse(visibility["predator_pixels_visible"])
+            self.assertFalse(visibility["predator_believed_visible"])
+        finally:
+            env.close()
 
 
 if __name__ == "__main__":

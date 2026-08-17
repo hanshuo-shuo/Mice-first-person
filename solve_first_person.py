@@ -158,7 +158,7 @@ class TopDownTrajectoryRenderer:
                 outline=(239, 252, 255),
                 width=2,
             )
-            heading = math.radians(float(self.model.prey.state.direction))
+            heading = math.radians(float(self.model.prey.state.body_heading))
             heading_tip = self._screen_point(
                 (
                     prey_trajectory[-1][0] + 0.045 * math.cos(heading),
@@ -396,7 +396,9 @@ def run_attempt(
         top_down = top_down_renderer.render(prey_trajectory, predator_trajectory)
         frames.append(combine_views(binocular_preview(observation), top_down))
         if terminated or truncated:
-            success = bool(env.unwrapped.model.prey_data.goal_achieved)
+            success = bool(
+                final_info.get("transition_events", {}).get("goal_event", False)
+            )
             return success, frames, prey_trajectory, predator_trajectory, final_info
     return False, frames, prey_trajectory, predator_trajectory, final_info
 
@@ -429,8 +431,15 @@ def main() -> None:
                 seed=attempt_seed,
                 max_steps=args.max_steps,
             )
-            goal_distance = float(env.unwrapped.model.prey_data.prey_goal_distance)
-            captures = int(env.unwrapped.model.prey_data.puff_count)
+            reward_terms = info.get("reward_terms", env.unwrapped.reward_terms)
+            episode_metrics = info.get("episode_metrics", {})
+            goal_distance = float(reward_terms["goal_distance"])
+            captures = int(
+                episode_metrics.get(
+                    "capture_count",
+                    env.unwrapped.capture_event_count,
+                )
+            )
             clean_success = solved and captures == 0
             print(
                 f"attempt={attempt + 1}/{args.attempts} seed={attempt_seed} "

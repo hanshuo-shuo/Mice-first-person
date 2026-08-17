@@ -17,6 +17,7 @@ class Robot(NavigationAgent):
                  view_field: float = 360,
                  max_forward_speed: float = 0.075,
                  max_turning_speed: float = 3.5,
+                 rng=None,
                  ):
         NavigationAgent.__init__(self,
                                  navigation=navigation,
@@ -28,11 +29,18 @@ class Robot(NavigationAgent):
                                  polygon_color=(90, 20, 20))
         self.start_locations = start_locations
         self.open_locations = open_locations
+        # ``random`` remains the backwards-compatible default for direct
+        # Robot users; environments attach their private seeded generator.
+        self.rng = random if rng is None else rng
         self.last_destination_time = 0
+
+    def set_rng(self, rng) -> None:
+        self.rng = rng
 
     def reset(self):
         NavigationAgent.reset(self)
-        return AgentState(location=random.choice(self.start_locations), direction=180)
+        self.last_destination_time = 0
+        return AgentState(location=self.rng.choice(self.start_locations), body_heading=180)
 
     @staticmethod
     def create_sprite() -> pygame.Surface:

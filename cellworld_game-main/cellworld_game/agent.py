@@ -10,29 +10,54 @@ from .event import EventDispatcher
 class AgentState(object):
     def __init__(self,
                  location: Point.type = (0, 0),
-                 direction: float = 0,
-                 velocity: typing.Tuple[float, float] = (0.0, 0.0)):
+                 body_heading: float = 0,
+                 velocity: typing.Tuple[float, float] = (0.0, 0.0),
+                 *,
+                 direction: typing.Optional[float] = None):
+        """Physical state for an agent.
+
+        ``body_heading`` is the agent's body orientation in degrees.  It is
+        deliberately independent from ``velocity``: a point-mass agent may
+        slide sideways without rotating its body.  ``direction`` is accepted
+        as a backwards-compatible constructor alias for older callers; the
+        canonical stored field is always ``body_heading``.
+        """
+        if direction is not None:
+            body_heading = direction
         self.location = location
-        self.direction = direction
+        self.body_heading = float(body_heading)
         self.velocity = velocity
+
+    @property
+    def direction(self) -> float:
+        """Deprecated alias for :attr:`body_heading`.
+
+        Keeping this alias makes old logs and task code readable while
+        preventing a second orientation value from being stored.
+        """
+        return self.body_heading
+
+    @direction.setter
+    def direction(self, value: float) -> None:
+        self.body_heading = float(value)
 
     def __iter__(self):
         yield self.location
-        yield self.direction
+        yield self.body_heading
 
     def update(self,
                distance: float,
                rotation: float) -> "AgentState":
-        new_direction = self.direction + rotation
+        new_heading = self.body_heading + rotation
         return AgentState(location=Point.move(start=self.location,
-                                              direction_degrees=new_direction,
+                                              direction_degrees=new_heading,
                                               distance=distance),
-                          direction=new_direction,
+                          body_heading=new_heading,
                           velocity=self.velocity)
 
     def copy(self) -> "AgentState":
         return AgentState(location=self.location,
-                          direction=self.direction,
+                          body_heading=self.body_heading,
                           velocity=self.velocity)
 
 
@@ -124,9 +149,15 @@ class Agent(EventDispatcher):
                          state: AgentState = None) -> Polygon:
         # Rotate and then translate the arrow polygon
         if state:
-            return self._body_polygon.translate_rotate(translation=state.location, rotation=state.direction)
+            return self._body_polygon.translate_rotate(
+                translation=state.location,
+                rotation=state.body_heading,
+            )
         else:
-            return self._body_polygon.translate_rotate(translation=self.state.location, rotation=self.state.direction)
+            return self._body_polygon.translate_rotate(
+                translation=self.state.location,
+                rotation=self.state.body_heading,
+            )
 
     def render(self,
                surface: pygame.Surface,
@@ -136,7 +167,7 @@ class Agent(EventDispatcher):
                 if self.sprite is None:
                     sprite_size = coordinate_converter.scale_from_canonical(self.size) * self.sprite_scale
                     self.sprite = pygame.transform.scale(self.create_sprite(), (sprite_size, sprite_size))
-                rotated_sprite = pygame.transform.rotate(self.sprite, self.state.direction)
+                rotated_sprite = pygame.transform.rotate(self.sprite, self.state.body_heading)
                 width, height = rotated_sprite.get_size()
                 screen_x, screen_y = coordinate_converter.from_canonical(self.state.location)
                 surface.blit(rotated_sprite, (screen_x - width / 2, screen_y - height / 2))

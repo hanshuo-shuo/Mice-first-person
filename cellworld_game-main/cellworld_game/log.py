@@ -37,7 +37,7 @@ def save_log_output(model: Model,
         for agent_name, agent in model.agents.items():
             agent_step = cw.Step(time_stamp=model.time,
                                  location=cw.Location(*agent.state.location),
-                                 rotation=90-agent.state.direction,
+                                 rotation=90-agent.state.body_heading,
                                  agent_name=agent_name,
                                  frame=frame)
             episode.trajectories.append(agent_step)
