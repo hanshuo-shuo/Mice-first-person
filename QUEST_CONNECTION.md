@@ -58,7 +58,24 @@ cd ~/projects/Mice-first-person
 bash setup/quest_setup.sh
 ```
 
-脚本会创建或更新 `Mice-BotEvade`，建立训练输出目录，并运行一次 Python 环境 smoke test。只有 `environment.yaml` 改变后才需要再次执行。
+脚本会创建或更新 `Mice-BotEvade` 并建立训练输出目录。只有 `environment.yaml` 改变后才需要再次执行。
+
+不要在登录节点加载完整的 PyTorch 训练栈。环境安装完成后，提交一个十分钟上限的小型 smoke job，在计算节点验证依赖和 Cellworld 环境：
+
+```bash
+cd ~/projects/Mice-first-person
+sbatch setup/quest_smoke.sbatch
+```
+
+查看返回的 job ID 和日志：
+
+```bash
+squeue -j <JOB_ID>
+cat slurm_logs/mice-smoke-<JOB_ID>.out
+cat slurm_logs/mice-smoke-<JOB_ID>.err
+```
+
+成功日志会包含 `Quest compute-node smoke test passed`。
 
 ## 以后每次提交任务（推荐）
 
