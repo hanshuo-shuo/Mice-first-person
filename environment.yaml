@@ -7,12 +7,15 @@ dependencies:
   - pip
   - numpy
   - matplotlib
+  - pillow
   - jupyterlab
   - pytorch
   - pygame
+  - pytest
   - pyyaml
   - shapely
   - tensorboard
+  - jsonschema
   - pip:
       - cellworld==0.0.381
       - cellworld-belief==0.0.33

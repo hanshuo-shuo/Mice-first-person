@@ -25,6 +25,7 @@ Thumbs.db
 logs/
 slurm_logs/
 Saved_Models/
+results/peekbench/
 datasets/human_demos/
 .cache/
 *.zip

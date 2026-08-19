@@ -62,6 +62,70 @@ No extra install step is needed — both gym files add it to `sys.path` automati
 python -c "import cellworld_game; print('OK')"
 ```
 
+## PeekBench P0
+
+PeekBench is the reproducible BotEvade benchmark for first-person active gaze,
+threat memory, and exact-state safety branches.  Its engineering labels and
+smoke results are not paper conclusions.  See
+[the research audit](docs/RESEARCH_AUDIT.md) and
+[the claims/test registry](docs/CLAIMS_AND_TESTS.md) for the information
+boundary and falsifiable experiments.
+
+Generate deterministic snapshots:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
+  python -B -m benchmarks.peekbench generate \
+  --config configs/peekbench/smoke.yaml
+```
+
+Run the no-key mock semantic evaluation:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
+  python -B -m benchmarks.peekbench open-loop \
+  --config configs/peekbench/smoke.yaml
+```
+
+Run fixed-gaze, candidate-gaze, and privileged-safe H-step branches:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
+  python -B -m benchmarks.peekbench branches \
+  --config configs/peekbench/smoke.yaml
+```
+
+Run the complete mock pipeline in one command:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
+  python -B -m benchmarks.peekbench all \
+  --config configs/peekbench/smoke.yaml
+```
+
+All artifacts are written under
+`results/peekbench/<experiment_id>/`: resolved config, Git/environment
+metadata, complete type-preserving state snapshots, public observations,
+raw JSONL records, policy telemetry, and CSV summaries.
+
+If `OPENROUTER_API_KEY` is absent, the deterministic local mock is selected
+automatically.  To use OpenRouter, export the key only in the shell/session;
+never write it to this repository, a config, a command log, or a test fixture.
+The exact model and provider routing are versioned in the YAML config.  The
+adapter uses strict structured output, bounded retry/timeout, and a local
+response cache.
+
+Audit human demonstrations without frame-level splitting:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
+  python -B -m analysis.human_demo_audit \
+  --data-root datasets/human_demos
+```
+
+With no recorded sessions, the audit writes a clear `no_data` summary and
+exits successfully.
+
 ---
 
 ### Design notes

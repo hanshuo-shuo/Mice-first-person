@@ -1,0 +1,47 @@
+experiment_id: peekbench_p0_smoke
+seed: 23
+num_snapshots: 5
+output_root: results/peekbench
+
+environment:
+  world_name: "21_05"
+  max_step: 80
+  time_step: 0.10
+  predator_prey_forward_speed_ratio: 0.15
+  vision_width: 32
+  vision_height: 24
+  vision_fov: 120.0
+  vision_far_clip: 2.0
+  vision_detection_range: 2.0
+
+sampling:
+  sources: [near_occlusion, junction, peek_location]
+  categories:
+    - predator_visible
+    - geometric_outside_frustum
+    - frustum_pixel_occluded
+    - recently_visible_hidden
+    - no_predator_control
+  minimum_predator_distance: 0.16
+  maximum_predator_distance: 0.70
+  recent_visibility_horizon: 4
+  candidate_search_limit: 32
+
+gaze_candidates_degrees: [-60, -30, 0, 30, 60]
+
+branch:
+  horizon_steps: 3
+  risk_distance: 0.18
+  minimum_distance_improvement: 0.02
+
+policy:
+  model: openai/gpt-4.1-mini
+  provider:
+    order: [openai]
+    allow_fallbacks: false
+    require_parameters: true
+    data_collection: deny
+  timeout_seconds: 10
+  max_retries: 1
+  retry_backoff_seconds: 0.1
+  max_history_frames: 2
