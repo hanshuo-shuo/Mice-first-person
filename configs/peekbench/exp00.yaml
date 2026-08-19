@@ -1,0 +1,73 @@
+experiment_id: exp00_gaze_oracle_headroom
+seed: 20260819
+num_snapshots: 75
+output_root: results/peekbench
+
+environment:
+  world_name: "21_05"
+  max_step: 200
+  time_step: 0.10
+  predator_prey_forward_speed_ratio: 0.15
+  vision_width: 64
+  vision_height: 48
+  vision_fov: 120.0
+  vision_far_clip: 2.0
+  vision_detection_range: 2.0
+
+sampling:
+  sources:
+    - near_occlusion
+    - junction
+    - peek_location
+  categories:
+    - predator_visible
+    - geometric_outside_frustum
+    - frustum_pixel_occluded
+    - recently_visible_hidden
+    - no_predator_control
+  minimum_predator_distance: 0.16
+  maximum_predator_distance: 0.80
+  recent_visibility_horizon: 8
+  candidate_search_limit: 64
+
+gaze_candidates_degrees: [-60, -30, 0, 30, 60]
+
+branch:
+  horizon_steps: 8
+  risk_distance: 0.18
+  minimum_distance_improvement: 0.03
+
+headroom:
+  # Four seconds of legal control at dt=0.1.  Head yaw changes only through
+  # the normalized third action dimension; candidate states are never edited.
+  horizon_steps: 40
+  risk_distance: 0.18
+  random_replicates: 5
+  random_target_hold_steps: 4
+  scan_dwell_steps: 1
+  target_tolerance_degrees: 2.0
+  active_look_degrees_threshold: 1.0
+  privileged_danger_distance: 0.34
+  go:
+    # 75 balanced snapshots contain 60 predator states and 15 negative controls.
+    minimum_predator_snapshots: 60
+    minimum_fixed_failure_fraction: 0.20
+    minimum_stable_headroom_fraction: 0.10
+    minimum_recovery_fraction_of_fixed_failures: 0.50
+    minimum_stable_recoveries: 6
+    minimum_safe_nonzero_gaze_candidates: 2
+
+policy:
+  # EXP-00 always uses the deterministic local MockVisionPolicy.  These fields
+  # remain versioned for shared PeekBench config compatibility; no provider is
+  # contacted by the headroom command.
+  model: mock/vision-v1
+  provider:
+    order: [local]
+    allow_fallbacks: false
+    require_parameters: true
+    data_collection: deny
+  timeout_seconds: 10
+  max_retries: 1
+  retry_backoff_seconds: 0.1
+  max_history_frames: 4

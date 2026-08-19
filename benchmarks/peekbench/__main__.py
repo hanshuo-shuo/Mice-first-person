@@ -11,6 +11,7 @@ from .config import load_config
 from .environment import PROJECT_ROOT
 from .evaluation import run_branch_evaluation, run_open_loop_evaluation
 from .generator import generate_snapshots
+from .headroom import run_headroom_evaluation
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
@@ -27,6 +28,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ("generate", "Generate deterministic state snapshots"),
         ("open-loop", "Run vision-only semantic decisions"),
         ("branches", "Run exact-state H-step branches"),
+        ("headroom", "Run EXP-00 legal-duration gaze headroom evaluation"),
         ("all", "Generate snapshots and run both evaluations"),
     ):
         child = subparsers.add_parser(command, help=help_text)
@@ -65,6 +67,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             bool(record["screening"]["avoidable_by_looking_candidate"])
             for record in branches
         )
+    if args.command == "headroom":
+        headroom = run_headroom_evaluation(config, project_root=PROJECT_ROOT)
+        summary["headroom_records"] = len(headroom["records"])
+        summary["go_verdict"] = headroom["summary"]["go"]["verdict"]
+        summary["go_condition_met"] = headroom["summary"]["go"][
+            "go_condition_met"
+        ]
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 

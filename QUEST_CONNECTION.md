@@ -137,6 +137,15 @@ bash setup/submit_quest.sh
 bash setup/submit_quest.sh setup/another_job.sbatch
 ```
 
+提交不训练模型、且强制无 OpenRouter key 的 EXP-00 Gaze Oracle Headroom：
+
+```bash
+bash setup/submit_quest.sh setup/peekbench_exp00.sbatch
+```
+
+该作业使用 `configs/peekbench/exp00.yaml`，并按 Slurm job ID 写入独立的
+`results/peekbench/exp00_gaze_oracle_headroom_<JOB_ID>/` 目录。
+
 ## 手动提交方式
 
 如果不使用本地辅助脚本：

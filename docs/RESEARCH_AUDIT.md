@@ -138,11 +138,12 @@ normalize that one host wall-clock value.  The vendored model overwrites it on
 every step even with `real_time=False`; it does not affect physics, tasks,
 observations, RNG, rewards, or termination.  No other state field is excluded.
 
-Instantaneous gaze intervention is an evaluation abstraction, not yet a claim
-about biomechanical action cost.  A later benchmark should add legal-duration
-head-turn branches and preregister their time cost.  Oasis should enter paired
-counterfactual evaluation only after its full task/RNG snapshot contract is
-implemented and tested independently.
+Instantaneous P0 gaze intervention remains an evaluation abstraction, not a
+claim about biomechanical action cost.  EXP-00 adds a separate legal-duration
+screen in which head yaw changes only through normalized `head_yaw_rate`
+actions, with gaze travel and elapsed control steps retained as costs.  Oasis
+should enter paired counterfactual evaluation only after its full task/RNG
+snapshot contract is implemented and tested independently.
 
 ## Operational PeekBench state classes
 

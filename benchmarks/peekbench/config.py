@@ -50,6 +50,24 @@ DEFAULT_CONFIG: Mapping[str, Any] = {
         "risk_distance": 0.18,
         "minimum_distance_improvement": 0.03,
     },
+    "headroom": {
+        "horizon_steps": 40,
+        "risk_distance": 0.18,
+        "random_replicates": 5,
+        "random_target_hold_steps": 4,
+        "scan_dwell_steps": 1,
+        "target_tolerance_degrees": 2.0,
+        "active_look_degrees_threshold": 1.0,
+        "privileged_danger_distance": 0.34,
+        "go": {
+            "minimum_predator_snapshots": 40,
+            "minimum_fixed_failure_fraction": 0.20,
+            "minimum_stable_headroom_fraction": 0.10,
+            "minimum_recovery_fraction_of_fixed_failures": 0.50,
+            "minimum_stable_recoveries": 5,
+            "minimum_safe_nonzero_gaze_candidates": 2,
+        },
+    },
     "policy": {
         "model": "openai/gpt-4.1-mini",
         "provider": {
@@ -129,6 +147,49 @@ def validate_config(config: Mapping[str, Any]) -> None:
     branch = config.get("branch", {})
     if int(branch.get("horizon_steps", 0)) <= 0:
         raise ValueError("branch.horizon_steps must be positive")
+
+    headroom = config.get("headroom", {})
+    if int(headroom.get("horizon_steps", 0)) <= 0:
+        raise ValueError("headroom.horizon_steps must be positive")
+    if float(headroom.get("risk_distance", 0.0)) <= 0.0:
+        raise ValueError("headroom.risk_distance must be positive")
+    if int(headroom.get("random_replicates", 0)) <= 0:
+        raise ValueError("headroom.random_replicates must be positive")
+    if int(headroom.get("random_target_hold_steps", 0)) <= 0:
+        raise ValueError("headroom.random_target_hold_steps must be positive")
+    if int(headroom.get("scan_dwell_steps", -1)) < 0:
+        raise ValueError("headroom.scan_dwell_steps must be non-negative")
+    if float(headroom.get("target_tolerance_degrees", 0.0)) <= 0.0:
+        raise ValueError("headroom.target_tolerance_degrees must be positive")
+    if float(headroom.get("active_look_degrees_threshold", 0.0)) <= 0.0:
+        raise ValueError(
+            "headroom.active_look_degrees_threshold must be positive",
+        )
+    if float(headroom.get("privileged_danger_distance", 0.0)) <= 0.0:
+        raise ValueError("headroom.privileged_danger_distance must be positive")
+
+    go = headroom.get("go", {})
+    if int(go.get("minimum_predator_snapshots", 0)) <= 0:
+        raise ValueError("headroom.go.minimum_predator_snapshots must be positive")
+    if int(go.get("minimum_stable_recoveries", 0)) <= 0:
+        raise ValueError("headroom.go.minimum_stable_recoveries must be positive")
+    minimum_safe_candidates = int(
+        go.get("minimum_safe_nonzero_gaze_candidates", 0),
+    )
+    nonzero_candidate_count = sum(abs(value) > 1e-9 for value in candidates)
+    if not 1 <= minimum_safe_candidates <= nonzero_candidate_count:
+        raise ValueError(
+            "headroom.go.minimum_safe_nonzero_gaze_candidates must be between "
+            f"1 and {nonzero_candidate_count}",
+        )
+    for name in (
+        "minimum_fixed_failure_fraction",
+        "minimum_stable_headroom_fraction",
+        "minimum_recovery_fraction_of_fixed_failures",
+    ):
+        value = float(go.get(name, -1.0))
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"headroom.go.{name} must be in [0, 1]")
 
 
 def load_config(

@@ -9,10 +9,16 @@ from benchmarks.peekbench.artifacts import (
     load_state,
     state_digest,
 )
-from benchmarks.peekbench.config import load_config
+from benchmarks.peekbench.config import load_config, validate_config
 from benchmarks.peekbench.environment import classify_state, make_env
 from benchmarks.peekbench.evaluation import evaluate_policy_branch
 from benchmarks.peekbench.generator import generate_snapshots
+from benchmarks.peekbench.headroom import (
+    METHOD_ORDER,
+    _oracle_score,
+    evaluate_go_condition,
+    run_headroom_evaluation,
+)
 from policies.base import MockVisionPolicy
 
 
@@ -141,3 +147,121 @@ def test_identical_config_and_seed_reproduce_snapshot_ids(
     assert [record["state_hash"] for record in first_records] == [
         record["state_hash"] for record in second_records
     ]
+
+
+def test_exp00_uses_legal_paired_gaze_actions(generated_benchmark):
+    config, experiment_dir, snapshot_records = generated_benchmark
+    before = {
+        record["snapshot_id"]: (experiment_dir / record["state_path"]).read_bytes()
+        for record in snapshot_records
+    }
+    result = run_headroom_evaluation(config)
+
+    assert result["summary"]["remote_model_calls"] == 0
+    assert len(result["records"]) == len(snapshot_records)
+    for record in result["records"]:
+        assert tuple(record["methods"]) == METHOD_ORDER
+        fixed = record["methods"]["fixed_head"]
+        zero_candidate = next(
+            branch
+            for branch in record["legal_gaze_candidates"]
+            if branch["controller"]["gaze"]["target_degrees"] == 0.0
+        )
+        assert fixed["actions"] == zero_candidate["actions"]
+        assert fixed["outcome"] == zero_candidate["outcome"]
+        oracle = record["methods"]["privileged_best_gaze"]
+        assert _oracle_score(oracle) == min(
+            _oracle_score(branch) for branch in record["legal_gaze_candidates"]
+        )
+        for method in METHOD_ORDER:
+            value = record["methods"][method]
+            branches = value if isinstance(value, list) else [value]
+            for branch in branches:
+                assert branch["legal_gaze"] is True
+                assert branch["source_snapshot_unchanged"] is True
+                actions = np.asarray(branch["actions"], dtype=np.float64)
+                assert np.all(actions >= -1.0)
+                assert np.all(actions <= 1.0)
+                assert np.max(np.abs(branch["head_yaw_degrees"])) <= 60.0
+
+    after = {
+        record["snapshot_id"]: (experiment_dir / record["state_path"]).read_bytes()
+        for record in snapshot_records
+    }
+    assert before == after
+
+
+def test_exp00_repeated_run_is_deterministic(generated_benchmark):
+    config, _, _ = generated_benchmark
+    first = run_headroom_evaluation(config)["records"]
+    second = run_headroom_evaluation(config)["records"]
+    assert canonical_typed_bytes(first) == canonical_typed_bytes(second)
+
+
+def _synthetic_headroom_branch(*, safe_success, target=0.0):
+    return {
+        "legal_gaze": True,
+        "source_snapshot_unchanged": True,
+        "controller": {"gaze": {"target_degrees": float(target)}},
+        "outcome": {"safe_success": bool(safe_success)},
+    }
+
+
+def test_exp00_go_requires_stable_nonzero_legal_recovery(generated_benchmark):
+    config = copy.deepcopy(generated_benchmark[0])
+    config["headroom"]["go"] = {
+        "minimum_predator_snapshots": 2,
+        "minimum_fixed_failure_fraction": 0.5,
+        "minimum_stable_headroom_fraction": 0.5,
+        "minimum_recovery_fraction_of_fixed_failures": 1.0,
+        "minimum_stable_recoveries": 1,
+        "minimum_safe_nonzero_gaze_candidates": 2,
+    }
+
+    def record(snapshot_id, fixed_safe, candidate_safety):
+        fixed = _synthetic_headroom_branch(safe_success=fixed_safe)
+        oracle = _synthetic_headroom_branch(
+            safe_success=any(candidate_safety),
+            target=30.0,
+        )
+        methods = {
+            "fixed_head": fixed,
+            "random_head": [_synthetic_headroom_branch(safe_success=fixed_safe)],
+            "coverage_scan": _synthetic_headroom_branch(safe_success=fixed_safe),
+            "privileged_best_gaze": oracle,
+            "privileged_safe_controller": _synthetic_headroom_branch(
+                safe_success=True,
+            ),
+        }
+        candidates = [
+            _synthetic_headroom_branch(
+                safe_success=safe,
+                target=target,
+            )
+            for safe, target in zip(candidate_safety, (-60.0, -30.0, 30.0, 60.0))
+        ]
+        return {
+            "snapshot_id": snapshot_id,
+            "use_predator": True,
+            "methods": methods,
+            "legal_gaze_candidates": candidates,
+        }
+
+    records = [
+        record("recoverable", False, (True, True, False, False)),
+        record("already-safe", True, (True, True, True, True)),
+    ]
+    decision = evaluate_go_condition(records, config)
+    assert decision["verdict"] == "GO"
+    assert decision["stable_recovery_snapshot_ids"] == ["recoverable"]
+
+    records[0]["legal_gaze_candidates"][1]["outcome"]["safe_success"] = False
+    decision = evaluate_go_condition(records, config)
+    assert decision["verdict"] == "NO_GO"
+
+
+def test_exp00_config_rejects_impossible_stability_requirement(generated_benchmark):
+    config = copy.deepcopy(generated_benchmark[0])
+    config["headroom"]["go"]["minimum_safe_nonzero_gaze_candidates"] = 5
+    with pytest.raises(ValueError, match="minimum_safe_nonzero_gaze_candidates"):
+        validate_config(config)

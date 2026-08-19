@@ -95,6 +95,30 @@ PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
   --config configs/peekbench/smoke.yaml
 ```
 
+Run EXP-00 Gaze Oracle Headroom with legal-duration head-yaw actions:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
+  python -B -m benchmarks.peekbench headroom \
+  --config configs/peekbench/exp00.yaml
+```
+
+EXP-00 does not train a model and never calls a remote provider. Fixed head,
+random head, coverage scan, and privileged best gaze use the same deterministic
+public-observation motion policy. The gaze oracle selects among complete
+rollouts whose head movement was produced only by the legal normalized
+`head_yaw_rate` action. The privileged safe controller is a separate
+exact-state task upper reference. Results include per-run JSONL/CSV, method and
+stratum tables, and a registered `GO`/`NO_GO` engineering screen in
+`headroom_summary.json`.
+
+Submit the registered 75-snapshot EXP-00 batch to Quest after committing and
+pushing the current branch:
+
+```bash
+bash setup/submit_quest.sh setup/peekbench_exp00.sbatch
+```
+
 Run the complete mock pipeline in one command:
 
 ```bash

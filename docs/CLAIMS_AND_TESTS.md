@@ -45,3 +45,29 @@ scientific findings:
 7. Report confidence intervals across seeds and anchor regions.
 8. Treat P0 outputs only as benchmark validation until those conditions are
    met.
+
+## EXP-00 registered engineering decision rule
+
+`configs/peekbench/exp00.yaml` freezes 75 exact-state snapshots: 60 predator
+states and 15 no-predator controls, balanced across the five operational state
+categories and three construction sources. Every branch starts from the same
+complete state/RNG snapshot. Unlike the P0 instantaneous gaze screen, EXP-00
+changes head yaw only through the legal third action dimension.
+
+The primary method table reports safe-success rate, capture rate, unnecessary-
+look rate, and path cost for fixed head, random head, coverage scan,
+privileged-best legal gaze, and a privileged safe controller. Safe success
+means no capture and no registered approach below the configured risk distance
+during the horizon. A look is unnecessary when it incurs at least the
+registered gaze travel but does not convert a fixed-head safety failure into a
+safe result. Path cost is physical prey trajectory length.
+
+The screen returns `GO` only when all registered conditions pass: at least 20%
+of predator states fail under fixed head; at least 10% of predator states are
+stable legal-gaze recoveries; at least 50% of fixed failures are stable
+recoveries; there are at least six such states; and all branches remain legal
+and source-immutable. Every snapshot must also match its requested construction
+category. “Stable” requires the privileged best gaze to succeed and at least
+two distinct non-zero legal target-gaze controllers to succeed. This is a
+decision to continue active-gaze research, not verification of a scientific
+hypothesis.

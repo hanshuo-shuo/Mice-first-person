@@ -34,6 +34,23 @@ branch:
   risk_distance: 0.18
   minimum_distance_improvement: 0.02
 
+headroom:
+  horizon_steps: 4
+  risk_distance: 0.18
+  random_replicates: 2
+  random_target_hold_steps: 2
+  scan_dwell_steps: 0
+  target_tolerance_degrees: 2.0
+  active_look_degrees_threshold: 1.0
+  privileged_danger_distance: 0.34
+  go:
+    minimum_predator_snapshots: 4
+    minimum_fixed_failure_fraction: 0.20
+    minimum_stable_headroom_fraction: 0.10
+    minimum_recovery_fraction_of_fixed_failures: 0.50
+    minimum_stable_recoveries: 1
+    minimum_safe_nonzero_gaze_candidates: 1
+
 policy:
   model: openai/gpt-4.1-mini
   provider:
