@@ -16,6 +16,12 @@ set -euo pipefail
 project_dir="${QUEST_PROJECT_DIR:-${HOME}/projects/Mice-first-person}"
 env_name="${QUEST_CONDA_ENV:-Mice-BotEvade}"
 experiment_id="${EXP00_EXPERIMENT_ID:-exp00_gaze_oracle_headroom_${SLURM_JOB_ID}}"
+git_commit="${QUEST_GIT_COMMIT:-}"
+
+if [[ ! "${git_commit}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    echo "Error: QUEST_GIT_COMMIT must contain the submitted 40-character SHA." >&2
+    exit 1
+fi
 
 cd "${project_dir}"
 mkdir -p .cache/matplotlib results/peekbench slurm_logs
@@ -31,7 +37,7 @@ export SDL_VIDEODRIVER=dummy
 unset OPENROUTER_API_KEY
 
 echo "EXP-00 experiment_id=${experiment_id}"
-echo "EXP-00 git_commit=$(git rev-parse HEAD)"
+echo "EXP-00 git_commit=${git_commit}"
 
 conda run --no-capture-output --name "${env_name}" \
     python -B -m benchmarks.peekbench headroom \

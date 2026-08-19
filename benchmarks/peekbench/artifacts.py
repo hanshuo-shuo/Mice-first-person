@@ -179,6 +179,13 @@ def write_csv(
 
 
 def git_commit(project_root: Path) -> str:
+    quest_commit = os.environ.get("QUEST_GIT_COMMIT", "").strip()
+    if quest_commit:
+        if len(quest_commit) != 40 or any(
+            character not in "0123456789abcdef" for character in quest_commit.lower()
+        ):
+            raise ValueError("QUEST_GIT_COMMIT must be a full 40-character Git SHA")
+        return quest_commit.lower()
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "HEAD"],

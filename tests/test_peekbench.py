@@ -6,6 +6,7 @@ import pytest
 
 from benchmarks.peekbench.artifacts import (
     canonical_typed_bytes,
+    git_commit,
     load_state,
     state_digest,
 )
@@ -265,3 +266,13 @@ def test_exp00_config_rejects_impossible_stability_requirement(generated_benchma
     config["headroom"]["go"]["minimum_safe_nonzero_gaze_candidates"] = 5
     with pytest.raises(ValueError, match="minimum_safe_nonzero_gaze_candidates"):
         validate_config(config)
+
+
+def test_quest_git_commit_override_is_validated(monkeypatch, tmp_path):
+    commit = "8d9ac79a9f539738c92a0fdc9347e34fd5b620c4"
+    monkeypatch.setenv("QUEST_GIT_COMMIT", commit.upper())
+    assert git_commit(tmp_path) == commit
+
+    monkeypatch.setenv("QUEST_GIT_COMMIT", "not-a-commit")
+    with pytest.raises(ValueError, match="QUEST_GIT_COMMIT"):
+        git_commit(tmp_path)

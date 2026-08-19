@@ -80,7 +80,10 @@ if [[ ! -f "${job_file}" ]]; then
     exit 1
 fi
 
-sbatch --parsable "${job_file}"
+quest_git_commit="$(git rev-parse HEAD)"
+sbatch --parsable \
+    --export="ALL,QUEST_GIT_COMMIT=${quest_git_commit}" \
+    "${job_file}"
 REMOTE
 } 2>&1)" || {
     echo "Quest submission failed:" >&2
