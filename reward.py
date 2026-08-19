@@ -77,6 +77,29 @@ def custom_reward(reward_terms) -> float:
     return -1.0 * capture + 1.0 * goal_achieved
 
 
+def first_person_sac_reward(reward_terms) -> float:
+    """Registered dense training reward for the binocular SAC experiment.
+
+    The policy still receives only the public first-person observation.  Goal
+    distance is used solely by the environment-owned reward callback to make
+    pixel-based exploration tractable; evaluation reports unshaped task events
+    (clean goal success, captures, and path cost) separately.
+    """
+
+    terms = _named_reward_terms(reward_terms)
+    capture = float(_term(terms, "capture", "capture_event", "puffed", default=0.0))
+    goal_achieved = float(_term(terms, "goal_achieved", "goal_event", default=0.0))
+    goal_distance = float(
+        _term(terms, "goal_distance", "prey_goal_distance", default=0.0),
+    )
+    return (
+        5.0 * goal_achieved
+        - 5.0 * capture
+        - 0.01 * goal_distance
+        - 0.001
+    )
+
+
 # ── Oasis reward ─────────────────────────────────────────────────────────────
 #
 # Reward design:

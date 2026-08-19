@@ -333,6 +333,40 @@ flattened frame-stacked observation.
 python SAC_train.py --config configs/sac_peeking_0406.yaml
 ```
 
+The command above is the legacy task state-vector `MlpPolicy` baseline.
+For a policy that actually consumes the recommended binocular public
+observation and controls active head yaw, use the registered first-person SAC
+pipeline. Because the observation is a Dict, Stable-Baselines3 uses
+`MultiInputPolicy` with a shared-weight binocular CNN extractor rather than its
+single-image `CnnPolicy` string:
+
+```bash
+# Tiny CPU gradient/checkpoint/load smoke.
+PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
+  python -B train_first_person_sac.py \
+  --config configs/sac_cnn_active_gaze.yaml \
+  --smoke --output-root /tmp/mice-sac-smoke
+
+# Quest: 1 A100, four environment workers, then paired evaluation and GIFs.
+bash setup/submit_quest.sh setup/sac_cnn_train.sbatch
+```
+
+The training reward is explicitly registered in `reward.py`: goal event `+5`,
+capture event `-5`, goal-distance shaping `-0.01*d`, and step cost `-0.001`.
+Goal distance is available only to the environment reward callback; the policy
+input remains exactly `image_left`, `image_right`, `proprio`, and
+`previous_action`. Evaluation does not infer performance from shaped return: it
+reports paired held-out clean-goal success, capture episodes, minimum distance,
+path cost, and gaze use for the active policy, the same policy with head action
+clamped to zero, and random actions. The job renders predeclared best,
+median-ranked representative, and worst held-out episodes as split-screen
+first-person/top-down GIFs.
+
+Artifacts are written to
+`results/sac/sac_cnn_active_gaze_<JOB_ID>/`, including resolved config and Git
+metadata, TensorBoard logs, periodic/final/best checkpoints, evaluation JSONL
+and CSV summaries, GIFs, and top-down trajectory PNGs.
+
 ### Evaluation
 
 ```bash

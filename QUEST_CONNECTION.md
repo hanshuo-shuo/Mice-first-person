@@ -146,6 +146,18 @@ bash setup/submit_quest.sh setup/peekbench_exp00.sbatch
 该作业使用 `configs/peekbench/exp00.yaml`，并按 Slurm job ID 写入独立的
 `results/peekbench/exp00_gaze_oracle_headroom_<JOB_ID>/` 目录。
 
+提交第一人称双目 CNN SAC（1×A100），训练结束后自动做配对评估和 GIF
+渲染：
+
+```bash
+bash setup/submit_quest.sh setup/sac_cnn_train.sbatch
+```
+
+产物写入
+`results/sac/sac_cnn_active_gaze_<JOB_ID>/`。该作业使用公开 Dict observation
+和 active-gaze 三维动作；旧的 `setup/sac_train.sbatch` 仍是状态向量 MLP
+基线，两者不要混淆。
+
 ## 手动提交方式
 
 如果不使用本地辅助脚本：

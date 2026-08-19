@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from reward import custom_reward, oasis_reward
+from reward import custom_reward, first_person_sac_reward, oasis_reward
 from oasis_gym import OasisEnv
 
 
@@ -32,6 +32,28 @@ class RewardContractTest(unittest.TestCase):
     def test_flattened_observation_is_rejected(self):
         with self.assertRaises(TypeError):
             custom_reward(np.zeros(20, dtype=np.float32))
+
+    def test_first_person_sac_shaping_uses_named_terms_only(self):
+        self.assertAlmostEqual(
+            first_person_sac_reward(
+                {"capture": 0.0, "goal_achieved": 0.0, "goal_distance": 0.5},
+            ),
+            -0.006,
+        )
+        self.assertAlmostEqual(
+            first_person_sac_reward(
+                {"capture": 1.0, "goal_achieved": 0.0, "goal_distance": 0.5},
+            ),
+            -5.006,
+        )
+        self.assertAlmostEqual(
+            first_person_sac_reward(
+                {"capture": 0.0, "goal_achieved": 1.0, "goal_distance": 0.0},
+            ),
+            4.999,
+        )
+        with self.assertRaises(TypeError):
+            first_person_sac_reward(np.zeros(20, dtype=np.float32))
 
     def test_oasis_goal_bonus_is_an_event_not_a_position(self):
         reward = oasis_reward()

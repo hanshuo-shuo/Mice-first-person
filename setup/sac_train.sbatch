@@ -32,7 +32,7 @@ export SDL_VIDEODRIVER=dummy
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: ${SLURM_JOB_NODELIST}"
 echo "Project: ${project_dir}"
-echo "Commit: $(git rev-parse HEAD)"
+echo "Commit: ${QUEST_GIT_COMMIT:-unknown}"
 echo "Started: $(date --iso-8601=seconds)"
 
 conda run --no-capture-output --name "${env_name}" \

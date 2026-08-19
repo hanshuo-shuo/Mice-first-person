@@ -71,3 +71,16 @@ category. “Stable” requires the privileged best gaze to succeed and at least
 two distinct non-zero legal target-gaze controllers to succeed. This is a
 decision to continue active-gaze research, not verification of a scientific
 hypothesis.
+
+## First-person SAC evidence boundary
+
+The binocular SAC run is a training experiment, not evidence that active gaze
+caused an improvement. Its registered evaluation therefore uses held-out,
+paired seeds and reports the trained active policy beside (1) the same network
+with only its head action clamped to zero and (2) random actions. The
+head-clamped comparison is an inference-time ablation with distribution shift,
+not a separately trained fixed-gaze control. Any causal active-gaze claim still
+requires independently trained matched fixed- and active-gaze policies across
+multiple seeds. Best, median-ranked, and worst rendered episodes are selected
+by a declared task ranking; a visually appealing rollout is never the primary
+result.
