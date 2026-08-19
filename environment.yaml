@@ -9,9 +9,13 @@ dependencies:
   - matplotlib
   - jupyterlab
   - pytorch
+  - pygame
+  - pyyaml
+  - shapely
   - tensorboard
   - pip:
       - cellworld==0.0.381
       - cellworld-belief==0.0.33
       - gymnasium==0.28.1
+      - pulsekit==0.0.3
       - stable-baselines3==2.3.2

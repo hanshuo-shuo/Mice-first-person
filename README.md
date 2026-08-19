@@ -39,6 +39,11 @@ Both environments are **POMDPs**: the prey agent does not always have line-of-si
 
 ## Setup
 
+### Quest / Slurm
+
+For the verified Northwestern Quest setup, one-command submission workflow,
+and job-management commands, see [QUEST_CONNECTION.md](QUEST_CONNECTION.md).
+
 ### 1. Create the conda environment
 
 ```bash

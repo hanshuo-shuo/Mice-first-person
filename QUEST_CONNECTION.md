@@ -1,37 +1,43 @@
-# Quest 连接与项目目录
+# Quest / Slurm setup（项目 B）
 
-本文档用于在 Northwestern Quest 上使用 **Mice-first-person（项目 B）**。
+这份文档记录从本地 Mac 同步代码并向 Northwestern Quest 提交 Slurm 任务的完整流程。
 
-## 项目信息
+## 已验证的配置
 
 | 项目 | 值 |
 | --- | --- |
 | GitHub 仓库 | `https://github.com/hanshuo-shuo/Mice-first-person.git` |
+| 本地目录 | `/Users/hanshuo/Desktop/Mice` |
 | Quest 目录 | `~/projects/Mice-first-person` |
-| 工作分支 | `velocity-action-env` |
-| SSH 主机 | `quest.northwestern.edu` |
+| Git 分支 | `velocity-action-env` |
+| Quest 用户 | `shv7753` |
+| Slurm account | `p31777`（当前默认 account） |
+| 默认分区 | `normal` |
+| Conda 环境 | `Mice-BotEvade` |
+| SSH socket | `/tmp/quest.sock` |
 
-> `/tmp/quest.sock` 只代表本机到 Quest 的 SSH 连接，不属于任何一个项目。项目之间通过 Quest 上的目录和 Git 仓库区分。
+`/tmp/quest.sock` 只代表 Mac 到 Quest 的 SSH 连接，不属于某个项目。项目通过 Quest 目录、Git 远端和分支区分。
 
-## 1. 建立并登录 Quest
+## 首次配置
 
-在本地 Mac 终端建立一个可复用 8 小时的 SSH 连接：
+### 1. 建立 SSH 连接
+
+在本地 Mac 终端运行：
 
 ```bash
-ssh -M -S /tmp/quest.sock -o ControlPersist=8h -fN quest.northwestern.edu
+ssh -M -S /tmp/quest.sock -o ControlPersist=8h -fN \
+  quest.northwestern.edu
 ```
 
-然后登录 Quest：
+登录 Quest：
 
 ```bash
 ssh -S /tmp/quest.sock quest.northwestern.edu
 ```
 
-如果连接已经建立，直接运行第二条命令即可。
+### 2. Clone 项目
 
-## 2. 第一次把项目 clone 到 Quest
-
-以下命令在 **Quest 终端**中运行：
+项目已经 clone 到 Quest。重新安装时可以在 Quest 运行：
 
 ```bash
 mkdir -p ~/projects
@@ -41,36 +47,131 @@ git clone --branch velocity-action-env \
 cd Mice-first-person
 ```
 
-如果 `~/projects/Mice-first-person` 已经存在，不要再次 clone，按照下面的日常更新流程操作。
+如果目录已经存在，不要再次 clone。
 
-## 3. 日常更新流程
+### 3. 创建 Quest Conda 环境
 
-先在本地 Mac 提交并推送代码：
+在 Quest 运行：
+
+```bash
+cd ~/projects/Mice-first-person
+bash setup/quest_setup.sh
+```
+
+脚本会创建或更新 `Mice-BotEvade`，建立训练输出目录，并运行一次 Python 环境 smoke test。只有 `environment.yaml` 改变后才需要再次执行。
+
+## 以后每次提交任务（推荐）
+
+### 1. 在本地提交并推送代码
 
 ```bash
 cd /Users/hanshuo/Desktop/Mice
 git status
+git add <本次修改的文件>
+git commit -m "描述本次实验"
 git push origin velocity-action-env
 ```
 
-然后登录 Quest 并更新项目 B：
+不要把尚未 commit 或 push 的代码提交到 Quest；Quest 只能拉取 GitHub 上已有的 commit。
+
+### 2. 建立 Quest 连接
+
+```bash
+ssh -M -S /tmp/quest.sock -o ControlPersist=8h -fN \
+  quest.northwestern.edu
+```
+
+如果连接已经存在，可以跳过这一步。
+
+检查连接：
+
+```bash
+ssh -O check -S /tmp/quest.sock quest.northwestern.edu
+```
+
+### 3. 从本地一条命令提交
+
+提交默认 SAC 训练任务：
+
+```bash
+cd /Users/hanshuo/Desktop/Mice
+bash setup/submit_quest.sh
+```
+
+这个脚本会自动：
+
+1. 检查本地工作区是否干净；
+2. 检查当前分支是否为 `velocity-action-env`；
+3. 检查本地 commit 是否已经 push 到 GitHub；
+4. 在 Quest 上 fast-forward 更新同一分支；
+5. 提交 `setup/sac_train.sbatch` 并返回 job ID。
+
+以后增加其他任务脚本后，可以指定仓库内的 `.sbatch` 文件：
+
+```bash
+bash setup/submit_quest.sh setup/another_job.sbatch
+```
+
+## 手动提交方式
+
+如果不使用本地辅助脚本：
+
+```bash
+ssh -S /tmp/quest.sock quest.northwestern.edu
+cd ~/projects/Mice-first-person
+git pull --ff-only origin velocity-action-env
+mkdir -p slurm_logs Saved_Models logs
+sbatch setup/sac_train.sbatch
+```
+
+不要直接在 Quest 登录节点运行长时间训练；训练应通过 `sbatch` 进入计算节点。
+
+## 查看和管理任务
+
+登录 Quest 后：
+
+```bash
+# 查看自己的任务
+squeue -u shv7753
+
+# 查看指定任务
+squeue -j <JOB_ID>
+
+# 查看完成任务的资源和状态
+sacct -j <JOB_ID> \
+  --format=JobID,JobName,Partition,State,Elapsed,ExitCode,MaxRSS
+
+# 查看标准输出；把 JOB_ID 换成真实编号
+tail -f ~/projects/Mice-first-person/slurm_logs/mice-sac-<JOB_ID>.out
+
+# 取消任务
+scancel <JOB_ID>
+```
+
+`setup/sac_train.sbatch` 当前申请：
+
+- account：`p31777`
+- partition：`normal`
+- 时间：8 小时
+- CPU：4 cores
+- 内存：16 GB
+- GPU：不申请（当前 `MlpPolicy` SAC 训练主要是 CPU 工作负载）
+
+资源不足或浪费时，直接修改 `.sbatch` 文件顶部的 `#SBATCH` 参数，commit 并 push 后再提交。Quest 要求 job script 明确指定 account、partition 和 time。
+
+## 防止进入错误项目
+
+在 Quest 运行任务前可以检查：
 
 ```bash
 cd ~/projects/Mice-first-person
-git pull --ff-only origin velocity-action-env
-```
-
-## 4. 运行前防止进入错误项目
-
-每次运行训练或提交任务前执行：
-
-```bash
 pwd
 git remote get-url origin
 git branch --show-current
+git status --short --branch
 ```
 
-项目 B 应该分别显示：
+预期分别包含：
 
 ```text
 .../projects/Mice-first-person
@@ -78,22 +179,16 @@ https://github.com/hanshuo-shuo/Mice-first-person.git
 velocity-action-env
 ```
 
-只要其中一项不一致，就先不要运行任务。
+## 关闭连接
 
-## 5. 使用独立的 tmux 会话（推荐）
-
-在 Quest 上为项目 B 创建或重新进入名为 `mice` 的会话：
-
-```bash
-tmux new-session -A -s mice -c ~/projects/Mice-first-person
-```
-
-项目 A 使用不同的会话名，例如 `crashbench`。SSH 连接可以共用，但项目目录和 tmux 会话名不要共用。
-
-## 6. 关闭 SSH 复用连接
-
-在本地 Mac 终端运行：
+在本地 Mac 运行：
 
 ```bash
 ssh -O exit -S /tmp/quest.sock quest.northwestern.edu
 ```
+
+## 官方参考
+
+- [Northwestern Quest Slurm job scheduler](https://rcdsdocs.it.northwestern.edu/systems/quest/user-guide/slurm/slurm.html)
+- [Northwestern Quest resources and partitions](https://rcdsdocs.it.northwestern.edu/systems/quest/resources/quest-resource.html)
+- [Northwestern Quest GPU guide](https://rcdsdocs.it.northwestern.edu/systems/quest/user-guide/gpu/gpu.html)

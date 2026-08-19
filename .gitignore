@@ -23,6 +23,8 @@ Thumbs.db
 
 # Training artifacts
 logs/
+slurm_logs/
+Saved_Models/
 datasets/human_demos/
 .cache/
 *.zip
