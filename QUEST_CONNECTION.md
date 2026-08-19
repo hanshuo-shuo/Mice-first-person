@@ -66,7 +66,10 @@ cd ~/projects/Mice-first-person
 bash setup/quest_setup.sh
 ```
 
-脚本会创建或更新 `Mice-BotEvade` 并建立训练输出目录。只有 `environment.yaml` 改变后才需要再次执行。
+脚本会创建或更新 `Mice-BotEvade`、建立训练输出目录，并在 Quest Linux
+环境中从 PyTorch/NVIDIA 官方 channel 安装 CUDA 12.4 PyTorch。显式 channel
+限定很重要；只添加 `pytorch-cuda` 仍可能让 Conda 选择 conda-forge 的
+CPU-only `pytorch` build。
 
 不要在登录节点加载完整的 PyTorch 训练栈。环境安装完成后，提交一个十分钟上限的小型 smoke job，在计算节点验证依赖和 Cellworld 环境：
 
@@ -84,6 +87,16 @@ cat slurm_logs/mice-smoke-<JOB_ID>.err
 ```
 
 成功日志会包含 `Quest compute-node smoke test passed`。
+
+GPU 训练前再提交专用 CUDA smoke：
+
+```bash
+sbatch setup/quest_cuda_smoke.sbatch
+```
+
+成功日志必须同时包含 `Quest CUDA smoke passed`、编译 CUDA 版本和实际
+GPU 名称。登录节点没有 GPU，因此只能检查 PyTorch 是否编译了 CUDA；
+`torch.cuda.is_available()` 必须在这个 GPU compute-node smoke 中判断。
 
 ## 以后每次提交任务（推荐）
 

@@ -35,5 +35,10 @@ export SDL_VIDEODRIVER=dummy
 conda run --no-capture-output --name "${env_name}" \
     python -c 'import sys; print(f"Python environment ready: {sys.executable}")'
 
+if [[ "${QUEST_INSTALL_CUDA_PYTORCH:-1}" == "1" ]]; then
+    QUEST_CONDA_ENV="${env_name}" bash setup/quest_enable_cuda.sh
+fi
+
 echo "Quest setup complete: ${project_dir} (${env_name})"
-echo "Run 'sbatch setup/quest_smoke.sbatch' to verify on a compute node."
+echo "Run 'sbatch setup/quest_smoke.sbatch' and then"
+echo "'sbatch setup/quest_cuda_smoke.sbatch' to verify compute nodes."
