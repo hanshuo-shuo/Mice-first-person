@@ -18,6 +18,14 @@
 
 `/tmp/quest.sock` 只代表 Mac 到 Quest 的 SSH 连接，不属于某个项目。项目通过 Quest 目录、Git 远端和分支区分。
 
+## 验证状态（2026-08-19）
+
+- 项目已 clone 到 Quest，远端和 `velocity-action-env` 分支正确；
+- `Mice-BotEvade` 已在 Quest 创建；
+- `setup/sac_train.sbatch` 已通过 Quest `sbatch --test-only`；
+- compute-node smoke job `9882250` 已 `COMPLETED`，exit code 为 `0:0`；
+- smoke test 首次加载峰值约 8 GiB，因此模板预留 12 GiB。
+
 ## 首次配置
 
 ### 1. 建立 SSH 连接
