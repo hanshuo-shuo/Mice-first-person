@@ -10,7 +10,7 @@ from benchmarks.peekbench.artifacts import (
     load_state,
     state_digest,
 )
-from benchmarks.peekbench.config import load_config, validate_config
+from benchmarks.peekbench.config import config_hash, load_config, validate_config
 from benchmarks.peekbench.environment import classify_state, make_env
 from benchmarks.peekbench.evaluation import evaluate_policy_branch
 from benchmarks.peekbench.generator import generate_snapshots
@@ -20,6 +20,7 @@ from benchmarks.peekbench.headroom import (
     evaluate_go_condition,
     run_headroom_evaluation,
 )
+from benchmarks.peekbench.speed_sweep import build_speed_config, ratio_label
 from policies.base import MockVisionPolicy
 
 
@@ -53,6 +54,21 @@ def test_state_category_definitions(overrides, expected):
         **overrides,
     }
     assert classify_state(label, recent_visibility_horizon=4) == expected
+
+
+def test_speed_sweep_rehashes_predator_ratio(tmp_path):
+    config = build_speed_config(
+        "configs/peekbench/smoke.yaml",
+        ratio=0.25,
+        experiment_id="pytest_speed_sweep",
+        num_snapshots=2,
+        output_root=tmp_path,
+    )
+
+    assert ratio_label(0.10) == "0p1"
+    assert config["environment"]["predator_prey_forward_speed_ratio"] == 0.25
+    assert config["config_hash"] == config_hash(config)
+    validate_config(config)
 
 
 @pytest.fixture(scope="module")

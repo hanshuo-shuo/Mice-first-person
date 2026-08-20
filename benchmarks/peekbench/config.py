@@ -104,6 +104,7 @@ def config_hash(config: Mapping[str, Any]) -> str:
     identity_config = copy.deepcopy(dict(config))
     identity_config.pop("output_root", None)
     identity_config.pop("experiment_id", None)
+    identity_config.pop("config_hash", None)
     return hashlib.sha256(canonical_json(identity_config).encode("utf-8")).hexdigest()
 
 
