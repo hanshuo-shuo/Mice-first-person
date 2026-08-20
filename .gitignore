@@ -26,6 +26,7 @@ logs/
 slurm_logs/
 Saved_Models/
 results/peekbench/
+results/sac/
 datasets/human_demos/
 .cache/
 *.zip
