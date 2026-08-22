@@ -175,6 +175,19 @@ PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
 With no recorded sessions, the audit writes a clear `no_data` summary and
 exits successfully.
 
+Run the EXP-02 human active-looking fingerprint analysis:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
+  python -B -m analysis.human_active_looking_fingerprint \
+  --data-root datasets/human_demos
+```
+
+The EXP-02 split manifest is grouped by `participant/session/world`; adjacent
+frames from one video are never randomized across train/test partitions.  The
+analysis writes descriptive strategy-structure metrics and an ethics reminder
+under `results/human_active_looking_fingerprint/`.
+
 ---
 
 ### Design notes

@@ -399,24 +399,26 @@ def audit_human_demos(
         participant = str(
             metadata.get("participant_id", metadata.get("participant", "unknown")),
         )
+        world_name = str(metadata.get("world_name", "unknown_world"))
         if participant == "unknown":
             issues.append(
                 AuditIssue(
                     "warning",
                     session_name,
                     None,
-                    "No participant_id; all unknown-participant sessions stay in one split group.",
+                    "No participant_id; split key falls back to unknown/session/world.",
                 ),
             )
-        group = participant if participant != "unknown" else "unknown_participant"
+        group = f"{participant}/{session_name}/{world_name}"
         split = _split_for_group(group, split_seed)
         split_manifest.append(
             {
                 "participant_id": participant,
                 "session": session_name,
+                "world_name": world_name,
                 "group_key": group,
                 "split": split,
-                "split_unit": "participant_then_session; never frame",
+                "split_unit": "participant/session/world; never frame",
             },
         )
         episode_metadata_by_file = {
@@ -494,6 +496,7 @@ def audit_human_demos(
                 {
                     "participant_id": participant,
                     "session": session_name,
+                    "world_name": world_name,
                     "episode": episode_name,
                     "split": split,
                     **metrics,
@@ -507,6 +510,7 @@ def audit_human_demos(
             {
                 "participant_id": rows[0]["participant_id"],
                 "session": session_name,
+                "world_name": rows[0]["world_name"],
                 "split": rows[0]["split"],
                 "episodes": len(rows),
                 "success_rate": float(np.mean([row["success"] for row in rows])),
@@ -535,6 +539,7 @@ def audit_human_demos(
         "sessions": len(session_files),
         "episodes": len(episodes),
         "participants": sorted({row["participant_id"] for row in split_manifest}),
+        "worlds": sorted({row["world_name"] for row in split_manifest}),
         "errors": error_count,
         "warnings": warning_count,
         "aggregate": {

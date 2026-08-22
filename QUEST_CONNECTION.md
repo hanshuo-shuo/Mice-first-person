@@ -170,6 +170,16 @@ bash setup/submit_quest.sh setup/peekbench_exp01.sbatch
 环境提供；不要写入仓库、YAML、命令参数、Slurm 日志或结果文件。实验定义、
 验收项和当前运行状态见 `docs/EXP01_PERCEPTION_ACTION_GAP_REPORT.md`。
 
+提交 EXP-02 Human Active-Looking Fingerprint 离线分析：
+
+```bash
+bash setup/submit_quest.sh setup/exp02_human_active_looking.sbatch
+```
+
+该任务使用 `datasets/human_demos`，不需要 `OPENROUTER_API_KEY`，并将
+participant/session/world 分组的描述性策略结构指标写入
+`results/human_active_looking_fingerprint/exp02_<JOB_ID>/`。
+
 提交第一人称双目 CNN SAC（1×A100），训练结束后自动做配对评估和 GIF
 渲染：
 
