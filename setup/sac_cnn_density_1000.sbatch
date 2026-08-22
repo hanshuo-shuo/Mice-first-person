@@ -5,7 +5,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --job-name=sac-density-1k
 #SBATCH --output=slurm_logs/%x-%j.out
@@ -19,7 +19,7 @@ git_commit="${QUEST_GIT_COMMIT:-}"
 source_experiment="${SAC_SOURCE_EXPERIMENT_ID:-sac_cnn_active_gaze_9903898}"
 seed_start="${SAC_DENSITY_SEED_START:-1000000}"
 episodes="${SAC_DENSITY_EPISODES:-1000}"
-workers="${SAC_DENSITY_WORKERS:-16}"
+workers="${SAC_DENSITY_WORKERS:-8}"
 
 if [[ ! "${git_commit}" =~ ^[0-9a-fA-F]{40}$ ]]; then
     echo "Error: QUEST_GIT_COMMIT must contain the submitted 40-character SHA." >&2

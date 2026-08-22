@@ -178,7 +178,9 @@ bash setup/submit_quest.sh setup/sac_cnn_density_1000.sbatch
 ```
 
 默认读取 `sac_cnn_active_gaze_9903898` 的 final checkpoint，并使用普通 CPU
-分区的 16 workers 并行评估，不额外占用 GPU。
+分区的 8 workers 并行评估，不额外占用 GPU。每个 worker 都会加载一份
+PyTorch SAC 模型，因此不要把 worker 数直接提高到整节点 CPU 数而不同时
+评估内存压力。
 
 ## 手动提交方式
 
