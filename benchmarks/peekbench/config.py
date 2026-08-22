@@ -144,6 +144,14 @@ def validate_config(config: Mapping[str, Any]) -> None:
     maximum = float(sampling.get("maximum_predator_distance", 0.0))
     if not 0 < minimum < maximum:
         raise ValueError("Predator distance bounds must satisfy 0 < min < max")
+    require_success = sampling.get("require_construction_success", False)
+    if not isinstance(require_success, bool):
+        raise TypeError("sampling.require_construction_success must be boolean")
+    if require_success and int(sampling.get("anchor_retry_limit", 0)) <= 0:
+        raise ValueError(
+            "sampling.anchor_retry_limit must be positive when construction "
+            "success is required",
+        )
 
     branch = config.get("branch", {})
     if int(branch.get("horizon_steps", 0)) <= 0:

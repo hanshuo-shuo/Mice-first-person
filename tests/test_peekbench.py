@@ -148,6 +148,13 @@ def test_exp04_budget_guard_rejects_free_compute():
         _assert_equal_budgets(methods)
 
 
+def test_required_snapshot_construction_retries_are_validated():
+    config = load_config("configs/peekbench/exp04_smoke.yaml")
+    config["sampling"]["anchor_retry_limit"] = 0
+    with pytest.raises(ValueError, match="anchor_retry_limit"):
+        validate_config(config)
+
+
 def test_exp01_registered_pilot_refuses_mock_backend(tmp_path):
     config = load_config(
         "configs/peekbench/exp01.yaml",

@@ -6,6 +6,8 @@ output_root: results/peekbench
 sampling:
   sources: [near_occlusion]
   categories: [predator_visible, recently_visible_hidden]
+  require_construction_success: true
+  anchor_retry_limit: 32
 
 exp04:
   horizon_steps: 8

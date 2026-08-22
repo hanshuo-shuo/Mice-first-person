@@ -324,30 +324,59 @@ def generate_snapshots(
             source_records = anchors[source]
             if not source_records:
                 raise RuntimeError(f"No sampling anchors available for {source}")
-            anchor_index = source_offsets[source] % len(source_records)
-            source_offsets[source] += 1
-            anchor = source_records[anchor_index]
             target_category = categories[index % len(categories)]
             sample_seed = int(config["seed"]) + index * 1009
-            sample_rng = np.random.default_rng(sample_seed)
-            if target_category == "no_predator_control":
-                constructed = _construct_no_predator(
-                    control_env,
-                    seed=sample_seed,
-                    anchor=anchor,
-                    config=config,
-                )
-                env = control_env
+            require_success = bool(
+                config["sampling"].get("require_construction_success", False),
+            )
+            retry_limit = int(
+                config["sampling"].get("anchor_retry_limit", 1),
+            )
+            construction_errors = []
+            for _ in range(retry_limit if require_success else 1):
+                anchor_index = source_offsets[source] % len(source_records)
+                source_offsets[source] += 1
+                anchor = source_records[anchor_index]
+                sample_rng = np.random.default_rng(sample_seed)
+                try:
+                    if target_category == "no_predator_control":
+                        constructed = _construct_no_predator(
+                            control_env,
+                            seed=sample_seed,
+                            anchor=anchor,
+                            config=config,
+                        )
+                        env = control_env
+                    else:
+                        constructed = _construct_predator_category(
+                            predator_env,
+                            seed=sample_seed,
+                            anchor=anchor,
+                            target_category=target_category,
+                            config=config,
+                            rng=sample_rng,
+                        )
+                        env = predator_env
+                except RuntimeError as error:
+                    if not require_success:
+                        raise
+                    construction_errors.append(
+                        f"cell {anchor['cell_id']}: {error}",
+                    )
+                    continue
+                if require_success and not constructed["construction_success"]:
+                    construction_errors.append(
+                        f"cell {anchor['cell_id']}: got {constructed['category']}",
+                    )
+                    continue
+                break
             else:
-                constructed = _construct_predator_category(
-                    predator_env,
-                    seed=sample_seed,
-                    anchor=anchor,
-                    target_category=target_category,
-                    config=config,
-                    rng=sample_rng,
+                details = "; ".join(construction_errors[-3:])
+                raise RuntimeError(
+                    f"Could not construct required category {target_category} "
+                    f"after {retry_limit} deterministic anchor attempts for "
+                    f"snapshot {index}. Last failures: {details}",
                 )
-                env = predator_env
 
             state = constructed["state"]
             observation = constructed["observation"]

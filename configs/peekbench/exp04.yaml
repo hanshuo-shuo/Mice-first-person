@@ -6,6 +6,8 @@ output_root: results/peekbench
 sampling:
   sources: [near_occlusion, junction, peek_location]
   categories: [predator_visible, geometric_outside_frustum, frustum_pixel_occluded, recently_visible_hidden]
+  require_construction_success: true
+  anchor_retry_limit: 128
 
 exp04:
   horizon_steps: 40
