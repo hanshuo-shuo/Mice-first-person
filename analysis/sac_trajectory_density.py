@@ -832,6 +832,126 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def finalize_audit(
+    config: Mapping[str, Any],
+    *,
+    output_dir: Path,
+    model_path: Path,
+    config_path: Path,
+    all_records: Sequence[Mapping[str, Any]],
+    traces_by_method: Mapping[str, Sequence[Mapping[str, np.ndarray]]],
+    episodes: int,
+    seed_start: int,
+    workers: int,
+    bootstrap_samples: int,
+    bins: int,
+    trajectory_sample: int,
+    elapsed_seconds: float,
+) -> dict[str, Any]:
+    method_rows = summarize_methods(all_records)
+    methods_by_name = {row["method"]: row for row in method_rows}
+    paired_rows = paired_differences(
+        all_records,
+        bootstrap_samples=int(bootstrap_samples),
+    )
+    spec = arena_spec(config)
+    arena = np.asarray(spec["arena"])
+    minimum = arena.min(axis=0)
+    maximum = arena.max(axis=0)
+    bounds = (
+        (float(minimum[0]), float(maximum[0])),
+        (float(minimum[1]), float(maximum[1])),
+    )
+    occupancy = {
+        method: episode_normalized_density(
+            traces_by_method[method],
+            bins=int(bins),
+            bounds=bounds,
+        )
+        for method in METHODS
+    }
+    captures = {
+        method: capture_density(
+            traces_by_method[method],
+            bins=int(bins),
+            bounds=bounds,
+        )
+        for method in METHODS
+    }
+
+    plot_trajectory_overview(
+        output_dir / "trajectory_overview.png",
+        traces_by_method=traces_by_method,
+        summaries=methods_by_name,
+        spec=spec,
+        sample_count=int(trajectory_sample),
+    )
+    plot_density_panels(
+        output_dir / "occupancy_density.png",
+        densities=occupancy,
+        spec=spec,
+        title="Episode-normalized prey occupancy",
+        colorbar_label="Mean occupancy mass per episode / bin",
+    )
+    plot_density_panels(
+        output_dir / "capture_density.png",
+        densities=captures,
+        spec=spec,
+        title="Capture-event density",
+        colorbar_label="Capture events per episode / bin",
+    )
+    plot_outcome_distributions(
+        output_dir / "outcome_distributions.png",
+        records=all_records,
+        summaries=methods_by_name,
+    )
+    plot_gaze_density(
+        output_dir / "gaze_density.png",
+        active_traces=traces_by_method["sac_active_gaze"],
+    )
+
+    write_jsonl(output_dir / "episodes.jsonl", all_records)
+    write_csv(output_dir / "episodes.csv", all_records)
+    write_csv(output_dir / "methods.csv", method_rows)
+    write_csv(output_dir / "paired_differences.csv", paired_rows)
+    metadata = {
+        **environment_metadata(PROJECT_ROOT),
+        "source_model": str(model_path.resolve()),
+        "source_config": str(config_path.resolve()),
+        "episodes_per_method": int(episodes),
+        "seed_start": int(seed_start),
+        "seed_end": int(seed_start) + int(episodes) - 1,
+        "workers": int(workers),
+        "elapsed_seconds": float(elapsed_seconds),
+        "density_semantics": "each episode normalized to unit mass before averaging",
+    }
+    summary = {
+        "metadata": metadata,
+        "methods": method_rows,
+        "paired_differences": paired_rows,
+        "artifacts": [
+            "trajectory_overview.png",
+            "occupancy_density.png",
+            "capture_density.png",
+            "outcome_distributions.png",
+            "gaze_density.png",
+        ],
+    }
+    write_json(output_dir / "run_metadata.json", metadata)
+    write_json(output_dir / "summary.json", summary)
+    (output_dir / "REPORT.md").write_text(
+        report_markdown(
+            methods=methods_by_name,
+            paired=paired_rows,
+            episodes=int(episodes),
+            seed_start=int(seed_start),
+            elapsed_seconds=float(elapsed_seconds),
+        ),
+        encoding="utf-8",
+    )
+    return summary
+
+
 def run_audit(args: argparse.Namespace) -> dict[str, Any]:
     if args.episodes <= 0 or args.workers <= 0 or args.bins <= 1:
         raise ValueError("episodes/workers must be positive and bins must exceed one")
@@ -865,106 +985,22 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
             f"capture={np.mean([r['capture_episode'] for r in records]):.4f}",
         )
 
-    method_rows = summarize_methods(all_records)
-    methods_by_name = {row["method"]: row for row in method_rows}
-    paired_rows = paired_differences(
-        all_records,
-        bootstrap_samples=int(args.bootstrap_samples),
-    )
     elapsed_seconds = time.perf_counter() - started
-    spec = arena_spec(config)
-    arena = np.asarray(spec["arena"])
-    minimum = arena.min(axis=0)
-    maximum = arena.max(axis=0)
-    bounds = ((float(minimum[0]), float(maximum[0])), (float(minimum[1]), float(maximum[1])))
-    occupancy = {
-        method: episode_normalized_density(
-            traces_by_method[method],
-            bins=int(args.bins),
-            bounds=bounds,
-        )
-        for method in METHODS
-    }
-    captures = {
-        method: capture_density(
-            traces_by_method[method],
-            bins=int(args.bins),
-            bounds=bounds,
-        )
-        for method in METHODS
-    }
-
-    plot_trajectory_overview(
-        output_dir / "trajectory_overview.png",
+    return finalize_audit(
+        config,
+        output_dir=output_dir,
+        model_path=args.model,
+        config_path=args.config,
+        all_records=all_records,
         traces_by_method=traces_by_method,
-        summaries=methods_by_name,
-        spec=spec,
-        sample_count=int(args.trajectory_sample),
+        episodes=int(args.episodes),
+        seed_start=int(args.seed_start),
+        workers=int(args.workers),
+        bootstrap_samples=int(args.bootstrap_samples),
+        bins=int(args.bins),
+        trajectory_sample=int(args.trajectory_sample),
+        elapsed_seconds=elapsed_seconds,
     )
-    plot_density_panels(
-        output_dir / "occupancy_density.png",
-        densities=occupancy,
-        spec=spec,
-        title="Episode-normalized prey occupancy",
-        colorbar_label="Mean occupancy mass per episode / bin",
-    )
-    plot_density_panels(
-        output_dir / "capture_density.png",
-        densities=captures,
-        spec=spec,
-        title="Capture-event density",
-        colorbar_label="Capture events per episode / bin",
-    )
-    plot_outcome_distributions(
-        output_dir / "outcome_distributions.png",
-        records=all_records,
-        summaries=methods_by_name,
-    )
-    plot_gaze_density(
-        output_dir / "gaze_density.png",
-        active_traces=traces_by_method["sac_active_gaze"],
-    )
-
-    write_jsonl(output_dir / "episodes.jsonl", all_records)
-    write_csv(output_dir / "episodes.csv", all_records)
-    write_csv(output_dir / "methods.csv", method_rows)
-    write_csv(output_dir / "paired_differences.csv", paired_rows)
-    metadata = {
-        **environment_metadata(PROJECT_ROOT),
-        "source_model": str(args.model.resolve()),
-        "source_config": str(args.config.resolve()),
-        "episodes_per_method": int(args.episodes),
-        "seed_start": int(args.seed_start),
-        "seed_end": int(args.seed_start) + int(args.episodes) - 1,
-        "workers": int(args.workers),
-        "elapsed_seconds": elapsed_seconds,
-        "density_semantics": "each episode normalized to unit mass before averaging",
-    }
-    summary = {
-        "metadata": metadata,
-        "methods": method_rows,
-        "paired_differences": paired_rows,
-        "artifacts": [
-            "trajectory_overview.png",
-            "occupancy_density.png",
-            "capture_density.png",
-            "outcome_distributions.png",
-            "gaze_density.png",
-        ],
-    }
-    write_json(output_dir / "run_metadata.json", metadata)
-    write_json(output_dir / "summary.json", summary)
-    (output_dir / "REPORT.md").write_text(
-        report_markdown(
-            methods=methods_by_name,
-            paired=paired_rows,
-            episodes=int(args.episodes),
-            seed_start=int(args.seed_start),
-            elapsed_seconds=elapsed_seconds,
-        ),
-        encoding="utf-8",
-    )
-    return summary
 
 
 def main(argv: Sequence[str] | None = None) -> int:

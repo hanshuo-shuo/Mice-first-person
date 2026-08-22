@@ -2,15 +2,14 @@
 
 #SBATCH --account=p31777
 #SBATCH --partition=normal
-#SBATCH --time=04:00:00
+#SBATCH --time=01:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=8G
-#SBATCH --array=0-29
-#SBATCH --job-name=sac-density-shard
-#SBATCH --output=slurm_logs/%x-%A_%a.out
-#SBATCH --error=slurm_logs/%x-%A_%a.err
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=16G
+#SBATCH --job-name=sac-density-aggregate
+#SBATCH --output=slurm_logs/%x-%j.out
+#SBATCH --error=slurm_logs/%x-%j.err
 
 set -euo pipefail
 
@@ -18,16 +17,17 @@ project_dir="${QUEST_PROJECT_DIR:-${HOME}/projects/Mice-first-person}"
 env_name="${QUEST_CONDA_ENV:-Mice-BotEvade}"
 git_commit="${QUEST_GIT_COMMIT:-}"
 source_experiment="${SAC_SOURCE_EXPERIMENT_ID:-sac_cnn_active_gaze_9903898}"
+array_job_id="${SAC_DENSITY_ARRAY_JOB_ID:-}"
 seed_start="${SAC_DENSITY_SEED_START:-1000000}"
 episodes="${SAC_DENSITY_EPISODES:-1000}"
 shard_count=10
-methods=(sac_active_gaze sac_head_clamped random_action)
-task_id="${SLURM_ARRAY_TASK_ID:-0}"
-method_index=$((task_id / shard_count))
-shard_index=$((task_id % shard_count))
 
 if [[ ! "${git_commit}" =~ ^[0-9a-fA-F]{40}$ ]]; then
     echo "Error: QUEST_GIT_COMMIT must contain the submitted 40-character SHA." >&2
+    exit 1
+fi
+if [[ ! "${array_job_id}" =~ ^[0-9]+$ ]]; then
+    echo "Error: SAC_DENSITY_ARRAY_JOB_ID must contain the shard array job ID." >&2
     exit 1
 fi
 
@@ -48,34 +48,18 @@ unset OPENROUTER_API_KEY
 source_dir="${project_dir}/results/sac/${source_experiment}"
 config_path="${source_dir}/resolved_config.yaml"
 model_path="${source_dir}/checkpoints/final_model.zip"
-array_job_id="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID}}"
 output_dir="${source_dir}/trajectory_density_1000_${array_job_id}"
 
-if [[ ! -f "${config_path}" || ! -f "${model_path}" ]]; then
-    echo "Error: source config/model missing under ${source_dir}." >&2
-    exit 1
-fi
-
-if (( method_index < 0 || method_index >= ${#methods[@]} )); then
-    echo "Error: array task ${task_id} has no method assignment." >&2
-    exit 1
-fi
-method="${methods[${method_index}]}"
-
-echo "SAC density source=${source_experiment}"
-echo "SAC density git_commit=${git_commit}"
-echo "SAC density method=${method} shard=${shard_index}/${shard_count}"
-echo "SAC density episodes=${episodes} seed_start=${seed_start}"
+echo "SAC density aggregate array_job_id=${array_job_id}"
+echo "SAC density aggregate git_commit=${git_commit}"
 
 conda run --no-capture-output --name "${env_name}" \
-    python -B -m analysis.sac_trajectory_density_sharded rollout \
+    python -B -m analysis.sac_trajectory_density_sharded aggregate \
     --config "${config_path}" \
     --model "${model_path}" \
     --output-dir "${output_dir}" \
     --episodes "${episodes}" \
     --seed-start "${seed_start}" \
-    --method "${method}" \
-    --shard-index "${shard_index}" \
     --shard-count "${shard_count}"
 
-echo "SAC density shard complete=${output_dir}/shards"
+echo "SAC density results=${output_dir}"

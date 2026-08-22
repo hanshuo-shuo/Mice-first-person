@@ -371,7 +371,7 @@ Run the project-level 1,000-seed trajectory and density audit after a checkpoint
 is frozen:
 
 ```bash
-bash setup/submit_quest.sh setup/sac_cnn_density_1000.sbatch
+bash setup/submit_sac_cnn_density_1000.sh
 ```
 
 The default audit pairs active gaze, inference-time head clamping, and random
@@ -380,7 +380,11 @@ pickle-free NPZ files and produces episode tables, paired bootstrap intervals,
 trajectory overlays, episode-normalized occupancy density, capture density,
 safety/efficiency distributions, head-yaw density, and a Markdown report. Each
 episode contributes unit mass to the primary occupancy map, so slower methods
-cannot dominate the density merely by taking more steps.
+cannot dominate the density merely by taking more steps. Quest executes this as
+30 independent single-process Slurm array shards (three methods by ten seed
+shards), followed by an `afterok` aggregation job. This avoids sharing PyTorch
+models through a local process pool and leaves each completed shard as an
+auditable artifact.
 
 ### Evaluation
 

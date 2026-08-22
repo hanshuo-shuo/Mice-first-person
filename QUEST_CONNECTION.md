@@ -174,13 +174,12 @@ bash setup/submit_quest.sh setup/sac_cnn_train.sbatch
 完成训练后，运行 1,000 个新 held-out seeds/方法的配对轨迹与密度审计：
 
 ```bash
-bash setup/submit_quest.sh setup/sac_cnn_density_1000.sbatch
+bash setup/submit_sac_cnn_density_1000.sh
 ```
 
 默认读取 `sac_cnn_active_gaze_9903898` 的 final checkpoint，并使用普通 CPU
-分区的 8 workers 并行评估，不额外占用 GPU。每个 worker 都会加载一份
-PyTorch SAC 模型，因此不要把 worker 数直接提高到整节点 CPU 数而不同时
-评估内存压力。
+分区的 30 个单进程 array shards（3 方法 × 10 seed shards）并行评估，不额外
+占用 GPU。所有 shard 成功后，依赖作业自动聚合 NPZ/JSONL、统计和图表。
 
 ## 手动提交方式
 

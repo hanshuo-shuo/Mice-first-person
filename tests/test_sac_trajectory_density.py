@@ -8,6 +8,7 @@ from analysis.sac_trajectory_density import (
     unpack_state_traces,
     wilson_interval,
 )
+from analysis.sac_trajectory_density_sharded import shard_bounds
 
 
 def trace(points, captures):
@@ -69,3 +70,10 @@ def test_wilson_interval_retains_uncertainty_at_observed_ceiling():
     low, high = wilson_interval(40, 40)
     assert low == pytest.approx(0.9124, abs=1e-3)
     assert high == pytest.approx(1.0)
+
+
+def test_shard_bounds_cover_odd_total_without_overlap():
+    bounds = [shard_bounds(11, index, 3) for index in range(3)]
+    assert bounds == [(0, 3), (3, 7), (7, 11)]
+    covered = [value for start, end in bounds for value in range(start, end)]
+    assert covered == list(range(11))
