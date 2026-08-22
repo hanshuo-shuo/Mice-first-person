@@ -156,8 +156,19 @@ bash setup/submit_quest.sh setup/another_job.sbatch
 bash setup/submit_quest.sh setup/peekbench_exp00.sbatch
 ```
 
-该作业使用 `configs/peekbench/exp00.yaml`，并按 Slurm job ID 写入独立的
+EXP-00 作业使用 `configs/peekbench/exp00.yaml`，并按 Slurm job ID 写入独立的
 `results/peekbench/exp00_gaze_oracle_headroom_<JOB_ID>/` 目录。
+
+提交 EXP-01 VLM Perception--Action Gap 探索性 pilot：
+
+```bash
+bash setup/submit_quest.sh setup/peekbench_exp01.sbatch
+```
+
+该任务使用 `configs/peekbench/exp01.yaml`，并且会在 Quest job 环境缺少
+`OPENROUTER_API_KEY` 时立即退出，绝不会静默回退到 mock。密钥只能通过作业
+环境提供；不要写入仓库、YAML、命令参数、Slurm 日志或结果文件。实验定义、
+验收项和当前运行状态见 `docs/EXP01_PERCEPTION_ACTION_GAP_REPORT.md`。
 
 提交第一人称双目 CNN SAC（1×A100），训练结束后自动做配对评估和 GIF
 渲染：

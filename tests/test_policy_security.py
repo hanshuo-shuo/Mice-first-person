@@ -98,6 +98,25 @@ def test_no_key_uses_mock_and_logs_no_secret(monkeypatch, tmp_path):
         assert forbidden not in log_text
 
 
+def test_exp01_public_timing_semantics_enter_request(tmp_path):
+    config = OpenRouterConfig(
+        model="test/exact-model",
+        provider={"order": ["ExactProvider"], "allow_fallbacks": False},
+        risk_horizon_seconds=4.0,
+        macro_duration_seconds=0.8,
+        cache_dir=tmp_path / "cache",
+        log_path=tmp_path / "calls.jsonl",
+    )
+    policy = OpenRouterVLMPolicy(config, api_key=None)
+    request = policy.build_request(
+        PolicyInput.from_observation(public_observation()),
+    )
+    serialized = json.dumps(request, sort_keys=True)
+    assert "within 4 seconds" in serialized
+    assert "up to 0.8 seconds" in serialized
+    assert "threat_visible describes only the current eye images" in serialized
+
+
 def test_keyed_backend_retries_caches_and_records_usage(tmp_path):
     calls = []
 

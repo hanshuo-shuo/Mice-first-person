@@ -46,6 +46,8 @@ class OpenRouterConfig:
     max_retries: int = 2
     retry_backoff_seconds: float = 0.5
     max_history_frames: int = 4
+    risk_horizon_seconds: float | None = None
+    macro_duration_seconds: float | None = None
     base_url: str = "https://openrouter.ai/api/v1/chat/completions"
     cache_dir: Path = Path(".cache/openrouter")
     log_path: Path = Path("policy_calls.jsonl")
@@ -65,6 +67,16 @@ class OpenRouterConfig:
             max_retries=int(value.get("max_retries", 2)),
             retry_backoff_seconds=float(value.get("retry_backoff_seconds", 0.5)),
             max_history_frames=int(value.get("max_history_frames", 4)),
+            risk_horizon_seconds=(
+                float(value["risk_horizon_seconds"])
+                if value.get("risk_horizon_seconds") is not None
+                else None
+            ),
+            macro_duration_seconds=(
+                float(value["macro_duration_seconds"])
+                if value.get("macro_duration_seconds") is not None
+                else None
+            ),
             base_url=str(
                 value.get(
                     "base_url",
@@ -86,6 +98,10 @@ class OpenRouterConfig:
             raise ValueError("retry_backoff_seconds must be non-negative")
         if self.max_history_frames < 0:
             raise ValueError("max_history_frames must be non-negative")
+        if self.risk_horizon_seconds is not None and self.risk_horizon_seconds <= 0:
+            raise ValueError("risk_horizon_seconds must be positive when supplied")
+        if self.macro_duration_seconds is not None and self.macro_duration_seconds <= 0:
+            raise ValueError("macro_duration_seconds must be positive when supplied")
 
 
 class OpenRouterVLMPolicy(VisionPolicy):
@@ -118,11 +134,27 @@ class OpenRouterVLMPolicy(VisionPolicy):
 
     def _public_text(self, policy_input: PolicyInput) -> str:
         values = policy_input.public_sensor_values()
-        return (
+        text = (
             "Public normalized sensors:\n"
             + json.dumps(values, sort_keys=True, separators=(",", ":"))
             + "\nReturn the semantic threat/risk/look/motion decision."
         )
+        if (
+            self.config.risk_horizon_seconds is not None
+            and self.config.macro_duration_seconds is not None
+        ):
+            text += (
+                "\nRegistered EXP-01 semantics: threat_visible describes only "
+                "the current eye images; risk_next_horizon may use public image "
+                "history and estimates capture or unsafe proximity within "
+                f"{self.config.risk_horizon_seconds:g} seconds. The recommended "
+                "motion/look macro may run for up to "
+                f"{self.config.macro_duration_seconds:g} seconds before the next "
+                "decision. Look targets are relative head yaw: far_left=+60, "
+                "left=+30, center=0, right=-30, far_right=-60 degrees; hold keeps "
+                "the current head direction."
+            )
+        return text
 
     def _content(self, policy_input: PolicyInput) -> list[Mapping[str, Any]]:
         content: list[Mapping[str, Any]] = [{"type": "text", "text": self._public_text(policy_input)}]
@@ -202,6 +234,8 @@ class OpenRouterVLMPolicy(VisionPolicy):
             "provider": dict(self.config.provider),
             "base_url": self.config.base_url,
             "schema": DECISION_JSON_SCHEMA,
+            "risk_horizon_seconds": self.config.risk_horizon_seconds,
+            "macro_duration_seconds": self.config.macro_duration_seconds,
         }
         return hashlib.sha256(
             json.dumps(material, sort_keys=True, separators=(",", ":")).encode(

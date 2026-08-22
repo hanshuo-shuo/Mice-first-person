@@ -72,6 +72,30 @@ two distinct non-zero legal target-gaze controllers to succeed. This is a
 decision to continue active-gaze research, not verification of a scientific
 hypothesis.
 
+## EXP-01 exploratory measurement rule
+
+`configs/peekbench/exp01.yaml` freezes a balanced 15-state pilot. Every static
+decision, observation-direction probe, semantic macro candidate, and closed-
+loop method starts from the same exact physical/task/RNG state. Policies receive
+only current public observation fields and, in the history condition, up to
+four prior public binocular frames.
+
+Current threat detection is scored against `predator_pixels_visible`. Danger is
+defined by capture or a registered distance-threshold crossing under an
+independent 40-step `forward|hold` reference branch. Look direction is scored
+only when current predator pixels are absent and at least one legal three-step
+look probe reveals them. Macro safety is measured by enumerating all 42
+registered motion/look combinations for the same eight-step duration as the
+closed-loop decision interval.
+
+Closed-loop public-history capture is paired against fixed continuation, the
+same policy's open-loop macro, and its current-only closed loop. The primary gap
+is conditioned on states where danger is correctly classified and at least one
+safe semantic macro exists; it reports unsafe chosen macros and subsequent
+closed-loop captures separately. This pilot is descriptive and exploratory.
+No paper claim is allowed from the deterministic mock, the engineering smoke,
+or a zero-sized conditional denominator.
+
 ## First-person SAC evidence boundary
 
 The binocular SAC run is a training experiment, not evidence that active gaze

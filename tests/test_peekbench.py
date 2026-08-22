@@ -13,6 +13,7 @@ from benchmarks.peekbench.artifacts import (
 from benchmarks.peekbench.config import config_hash, load_config, validate_config
 from benchmarks.peekbench.environment import classify_state, make_env
 from benchmarks.peekbench.evaluation import evaluate_policy_branch
+from benchmarks.peekbench.exp01 import CLOSED_LOOP_METHODS, run_exp01_evaluation
 from benchmarks.peekbench.generator import generate_snapshots
 from benchmarks.peekbench.headroom import (
     METHOD_ORDER,
@@ -69,6 +70,25 @@ def test_speed_sweep_rehashes_predator_ratio(tmp_path):
     assert config["environment"]["predator_prey_forward_speed_ratio"] == 0.25
     assert config["config_hash"] == config_hash(config)
     validate_config(config)
+
+
+def test_exp01_config_validation_rejects_invalid_decision_interval():
+    config = load_config("configs/peekbench/exp01_smoke.yaml")
+    config["exp01"]["decision_interval_steps"] = 0
+    with pytest.raises(ValueError, match="decision_interval_steps"):
+        validate_config(config)
+
+
+def test_exp01_registered_pilot_refuses_mock_backend(tmp_path):
+    config = load_config(
+        "configs/peekbench/exp01.yaml",
+        experiment_id="pytest_exp01_remote_guard",
+        num_snapshots=1,
+        output_root=tmp_path,
+    )
+    with pytest.raises(RuntimeError, match="requires a remote VLM"):
+        run_exp01_evaluation(config, policy=MockVisionPolicy())
+    assert not (tmp_path / "pytest_exp01_remote_guard" / "snapshots.jsonl").exists()
 
 
 @pytest.fixture(scope="module")
@@ -213,6 +233,43 @@ def test_exp00_repeated_run_is_deterministic(generated_benchmark):
     first = run_headroom_evaluation(config)["records"]
     second = run_headroom_evaluation(config)["records"]
     assert canonical_typed_bytes(first) == canonical_typed_bytes(second)
+
+
+def test_exp01_mock_smoke_measures_full_gap_chain(tmp_path):
+    config = load_config(
+        "configs/peekbench/exp01_smoke.yaml",
+        experiment_id="pytest_exp01",
+        num_snapshots=1,
+        output_root=tmp_path,
+    )
+    result = run_exp01_evaluation(config, policy=MockVisionPolicy())
+
+    assert len(result["records"]) == 1
+    record = result["records"][0]
+    assert set(record["static"]) == {"current_only", "public_history"}
+    assert set(record["measurements"]) == {"current_only", "public_history"}
+    assert len(record["look_probes"]) == 6
+    assert len(record["macro_candidates"]) == 42
+    assert tuple(record["closed_loop"]) == CLOSED_LOOP_METHODS
+    assert record["source_snapshot_unchanged"] is True
+    for method in CLOSED_LOOP_METHODS:
+        assert record["closed_loop"][method]["legal_gaze"] is True
+        assert record["closed_loop"][method]["source_snapshot_unchanged"] is True
+
+    summary = result["summary"]
+    assert summary["evidence_level"] == "engineering_mock_only"
+    assert summary["remote_uncached_model_calls"] == 0
+    assert summary["research_hypothesis_verified"] is False
+    assert summary["paper_claim_allowed"] is False
+    experiment_dir = tmp_path / "pytest_exp01"
+    for name in (
+        "exp01.jsonl",
+        "exp01_measurements.csv",
+        "exp01_closed_loop.csv",
+        "exp01_methods.csv",
+        "exp01_summary.json",
+    ):
+        assert (experiment_dir / name).is_file()
 
 
 def _synthetic_headroom_branch(*, safe_success, target=0.0):

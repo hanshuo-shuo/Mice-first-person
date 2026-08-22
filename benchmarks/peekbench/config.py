@@ -192,6 +192,37 @@ def validate_config(config: Mapping[str, Any]) -> None:
         if not 0.0 <= value <= 1.0:
             raise ValueError(f"headroom.go.{name} must be in [0, 1]")
 
+    if "exp01" in config:
+        exp01 = config["exp01"]
+        if not isinstance(exp01, Mapping):
+            raise TypeError("exp01 must be a mapping")
+        for name in (
+            "horizon_steps",
+            "macro_horizon_steps",
+            "look_probe_steps",
+            "decision_interval_steps",
+        ):
+            if int(exp01.get(name, 0)) <= 0:
+                raise ValueError(f"exp01.{name} must be positive")
+        for name in (
+            "risk_distance",
+            "target_tolerance_degrees",
+            "privileged_danger_distance",
+        ):
+            if float(exp01.get(name, 0.0)) <= 0.0:
+                raise ValueError(f"exp01.{name} must be positive")
+        risk_threshold = float(exp01.get("risk_threshold", -1.0))
+        if not 0.0 <= risk_threshold <= 1.0:
+            raise ValueError("exp01.risk_threshold must be in [0, 1]")
+        if not isinstance(exp01.get("require_remote_policy"), bool):
+            raise TypeError("exp01.require_remote_policy must be boolean")
+        if int(exp01["macro_horizon_steps"]) != int(
+            exp01["decision_interval_steps"],
+        ):
+            raise ValueError(
+                "exp01.macro_horizon_steps must equal decision_interval_steps",
+            )
+
 
 def load_config(
     path: str | Path,

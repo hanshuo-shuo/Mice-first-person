@@ -119,6 +119,31 @@ pushing the current branch:
 bash setup/submit_quest.sh setup/peekbench_exp00.sbatch
 ```
 
+Run the EXP-01 perception--action gap engineering smoke without a provider
+credential:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 conda run -n Mice-BotEvade \
+  python -B -m benchmarks.peekbench exp01 \
+  --config configs/peekbench/exp01_smoke.yaml
+```
+
+The smoke checks the paired measurement chain with the deterministic mock and
+cannot support a VLM claim. The registered exploratory pilot uses
+`configs/peekbench/exp01.yaml`, refuses mock fallback, and measures current
+pixel detection, danger classification, legal reveal direction, 42 semantic
+macro actions, current-only/public-history closed loops, paired capture, and
+the conditional perception--action gap. See
+[`docs/EXP01_PERCEPTION_ACTION_GAP_REPORT.md`](docs/EXP01_PERCEPTION_ACTION_GAP_REPORT.md)
+for definitions, current status, and limitations.
+
+After making `OPENROUTER_API_KEY` available only in the Quest job environment,
+submit the pilot with:
+
+```bash
+bash setup/submit_quest.sh setup/peekbench_exp01.sbatch
+```
+
 Run the complete mock pipeline in one command:
 
 ```bash

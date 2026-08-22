@@ -10,6 +10,7 @@ from typing import Sequence
 from .config import load_config
 from .environment import PROJECT_ROOT
 from .evaluation import run_branch_evaluation, run_open_loop_evaluation
+from .exp01 import run_exp01_evaluation
 from .generator import generate_snapshots
 from .headroom import run_headroom_evaluation
 
@@ -29,6 +30,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ("open-loop", "Run vision-only semantic decisions"),
         ("branches", "Run exact-state H-step branches"),
         ("headroom", "Run EXP-00 legal-duration gaze headroom evaluation"),
+        ("exp01", "Run EXP-01 paired perception--action gap evaluation"),
         ("all", "Generate snapshots and run both evaluations"),
     ):
         child = subparsers.add_parser(command, help=help_text)
@@ -73,6 +75,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         summary["go_verdict"] = headroom["summary"]["go"]["verdict"]
         summary["go_condition_met"] = headroom["summary"]["go"][
             "go_condition_met"
+        ]
+    if args.command == "exp01":
+        exp01 = run_exp01_evaluation(config, project_root=PROJECT_ROOT)
+        summary["exp01_records"] = len(exp01["records"])
+        summary["backends"] = exp01["summary"]["backends"]
+        summary["evidence_level"] = exp01["summary"]["evidence_level"]
+        summary["remote_uncached_model_calls"] = exp01["summary"][
+            "remote_uncached_model_calls"
         ]
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
