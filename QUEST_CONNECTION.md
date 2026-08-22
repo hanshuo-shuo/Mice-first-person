@@ -180,6 +180,21 @@ bash setup/submit_quest.sh setup/exp02_human_active_looking.sbatch
 participant/session/world 分组的描述性策略结构指标写入
 `results/human_active_looking_fingerprint/exp02_<JOB_ID>/`。
 
+提交 EXP-03 相同当前观察、不同公开历史的记忆对照：
+
+```bash
+bash setup/submit_quest.sh setup/peekbench_exp03.sbatch
+```
+
+提交 EXP-04 严格等帧数、等调用数、等观察时长的主动视角对照：
+
+```bash
+bash setup/submit_quest.sh setup/peekbench_exp04.sbatch
+```
+
+两者均不读取 `OPENROUTER_API_KEY`；作业脚本会主动清除该变量。EXP-03/04
+的 smoke 和确定性诊断只验证实验合同，不能直接作为论文结论。
+
 提交第一人称双目 CNN SAC（1×A100），训练结束后自动做配对评估和 GIF
 渲染：
 

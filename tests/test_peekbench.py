@@ -11,9 +11,15 @@ from benchmarks.peekbench.artifacts import (
     state_digest,
 )
 from benchmarks.peekbench.config import config_hash, load_config, validate_config
+from benchmarks.peekbench.controlled_memory import PublicVisualEncoder
 from benchmarks.peekbench.environment import classify_state, make_env
 from benchmarks.peekbench.evaluation import evaluate_policy_branch
 from benchmarks.peekbench.exp01 import CLOSED_LOOP_METHODS, run_exp01_evaluation
+from benchmarks.peekbench.exp03 import _method_predictions
+from benchmarks.peekbench.exp04 import (
+    METHOD_ORDER as EXP04_METHOD_ORDER,
+    _assert_equal_budgets,
+)
 from benchmarks.peekbench.generator import generate_snapshots
 from benchmarks.peekbench.headroom import (
     METHOD_ORDER,
@@ -22,7 +28,7 @@ from benchmarks.peekbench.headroom import (
     run_headroom_evaluation,
 )
 from benchmarks.peekbench.speed_sweep import build_speed_config, ratio_label
-from policies.base import MockVisionPolicy
+from policies.base import MockVisionPolicy, PublicHistoryFrame
 
 
 @pytest.mark.parametrize(
@@ -77,6 +83,69 @@ def test_exp01_config_validation_rejects_invalid_decision_interval():
     config["exp01"]["decision_interval_steps"] = 0
     with pytest.raises(ValueError, match="decision_interval_steps"):
         validate_config(config)
+
+
+def test_exp03_config_requires_history_beyond_frame_stack():
+    config = load_config("configs/peekbench/exp03_smoke.yaml")
+    config["exp03"]["history_steps"] = config["exp03"]["frame_stack_k"]
+    with pytest.raises(ValueError, match="must exceed frame_stack_k"):
+        validate_config(config)
+
+
+def test_exp03_memory_methods_separate_identical_current_inputs():
+    current = {
+        "image_left": np.zeros((16, 16, 3), dtype=np.uint8),
+        "image_right": np.zeros((16, 16, 3), dtype=np.uint8),
+        "proprio": np.zeros((3,), dtype=np.float32),
+        "previous_action": np.zeros((3,), dtype=np.float32),
+    }
+    visible = np.zeros((16, 16, 3), dtype=np.uint8)
+    visible[6:10, 2:5] = (235, 52, 42)
+    hidden = np.zeros_like(visible)
+    threat_history = [
+        PublicHistoryFrame(image_left=visible, image_right=hidden),
+        *[
+            PublicHistoryFrame(image_left=hidden, image_right=hidden)
+            for _ in range(6)
+        ],
+    ]
+    threat = _method_predictions(
+        current,
+        threat_history,
+        correct_action="forward",
+        frame_stack_k=4,
+        gru_decay=0.03,
+        privileged_threat=True,
+    )
+    control = _method_predictions(
+        current,
+        (),
+        correct_action="backward",
+        frame_stack_k=4,
+        gru_decay=0.03,
+        privileged_threat=False,
+    )
+    assert threat["single_frame_reactive"]["prediction"] == "backward"
+    assert threat["frame_stacking"]["prediction"] == "backward"
+    for method in ("gru_belief", "transformer_history", "vlm_textual_memory"):
+        assert threat[method]["prediction"] == "forward"
+        assert control[method]["prediction"] == "backward"
+
+
+def test_exp04_budget_guard_rejects_free_compute():
+    budget = {
+        "image_frames": 16,
+        "model_calls": 8,
+        "encoder_calls": 8,
+        "encoder_id": PublicVisualEncoder.encoder_id,
+    }
+    methods = {
+        method: {"budget": dict(budget)} for method in EXP04_METHOD_ORDER
+    }
+    assert _assert_equal_budgets(methods) == budget
+    methods["decision_centric_gaze"]["budget"]["encoder_calls"] = 9
+    with pytest.raises(RuntimeError, match="unequal compute"):
+        _assert_equal_budgets(methods)
 
 
 def test_exp01_registered_pilot_refuses_mock_backend(tmp_path):

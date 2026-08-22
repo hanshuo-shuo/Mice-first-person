@@ -1,0 +1,23 @@
+experiment_id: exp03_memory_smoke
+seed: 311
+num_snapshots: 1
+output_root: results/peekbench
+
+environment:
+  predator_prey_forward_speed_ratio: 0.0
+
+sampling:
+  sources: [near_occlusion, junction, peek_location]
+  categories: [recently_visible_hidden]
+  minimum_predator_distance: 0.22
+  maximum_predator_distance: 0.70
+  recent_visibility_horizon: 16
+  candidate_search_limit: 96
+
+exp03:
+  history_steps: 10
+  frame_stack_k: 4
+  turn_command: 1.0
+  gru_decay: 0.03
+  goal_alignment_degrees: 30.0
+  candidate_search_limit: 96

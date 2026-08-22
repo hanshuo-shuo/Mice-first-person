@@ -1,0 +1,14 @@
+experiment_id: exp04_active_gaze_equal_compute
+seed: 419
+num_snapshots: 200
+output_root: results/peekbench
+
+sampling:
+  sources: [near_occlusion, junction, peek_location]
+  categories: [predator_visible, geometric_outside_frustum, frustum_pixel_occluded, recently_visible_hidden]
+
+exp04:
+  horizon_steps: 40
+  risk_distance: 0.18
+  scan_dwell_steps: 2
+  target_tolerance_degrees: 2.0

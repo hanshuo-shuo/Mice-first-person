@@ -1,0 +1,14 @@
+experiment_id: exp04_equal_compute_smoke
+seed: 419
+num_snapshots: 5
+output_root: results/peekbench
+
+sampling:
+  sources: [near_occlusion]
+  categories: [predator_visible, recently_visible_hidden]
+
+exp04:
+  horizon_steps: 8
+  risk_distance: 0.18
+  scan_dwell_steps: 1
+  target_tolerance_degrees: 2.0

@@ -11,6 +11,8 @@ from .config import load_config
 from .environment import PROJECT_ROOT
 from .evaluation import run_branch_evaluation, run_open_loop_evaluation
 from .exp01 import run_exp01_evaluation
+from .exp03 import run_exp03_evaluation
+from .exp04 import run_exp04_evaluation
 from .generator import generate_snapshots
 from .headroom import run_headroom_evaluation
 
@@ -31,6 +33,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ("branches", "Run exact-state H-step branches"),
         ("headroom", "Run EXP-00 legal-duration gaze headroom evaluation"),
         ("exp01", "Run EXP-01 paired perception--action gap evaluation"),
+        ("exp03", "Run EXP-03 identical-current temporal-memory evaluation"),
+        ("exp04", "Run EXP-04 equal-budget active-gaze evaluation"),
         ("all", "Generate snapshots and run both evaluations"),
     ):
         child = subparsers.add_parser(command, help=help_text)
@@ -84,6 +88,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         summary["remote_uncached_model_calls"] = exp01["summary"][
             "remote_uncached_model_calls"
         ]
+    if args.command == "exp03":
+        exp03 = run_exp03_evaluation(config, project_root=PROJECT_ROOT)
+        summary["exp03_pairs"] = len(exp03["records"])
+        summary["current_observations_identical"] = exp03["summary"][
+            "all_current_observations_byte_identical"
+        ]
+    if args.command == "exp04":
+        exp04 = run_exp04_evaluation(config, project_root=PROJECT_ROOT)
+        summary["exp04_snapshots"] = len(exp04["records"])
+        summary["all_budgets_equal"] = exp04["summary"]["all_budgets_equal"]
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 

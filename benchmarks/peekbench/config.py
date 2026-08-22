@@ -223,6 +223,34 @@ def validate_config(config: Mapping[str, Any]) -> None:
                 "exp01.macro_horizon_steps must equal decision_interval_steps",
             )
 
+    if "exp03" in config:
+        exp03 = config["exp03"]
+        if not isinstance(exp03, Mapping):
+            raise TypeError("exp03 must be a mapping")
+        for name in ("history_steps", "frame_stack_k", "candidate_search_limit"):
+            if int(exp03.get(name, 0)) <= 0:
+                raise ValueError(f"exp03.{name} must be positive")
+        if int(exp03["history_steps"]) <= int(exp03["frame_stack_k"]):
+            raise ValueError("exp03.history_steps must exceed frame_stack_k")
+        if not -1.0 <= float(exp03.get("turn_command", 2.0)) <= 1.0:
+            raise ValueError("exp03.turn_command must be in [-1, 1]")
+        if not 0.0 < float(exp03.get("gru_decay", 0.0)) < 1.0:
+            raise ValueError("exp03.gru_decay must be in (0, 1)")
+        alignment = float(exp03.get("goal_alignment_degrees", 0.0))
+        if not 0.0 < alignment <= 90.0:
+            raise ValueError("exp03.goal_alignment_degrees must be in (0, 90]")
+
+    if "exp04" in config:
+        exp04 = config["exp04"]
+        if not isinstance(exp04, Mapping):
+            raise TypeError("exp04 must be a mapping")
+        for name in ("horizon_steps", "scan_dwell_steps"):
+            if int(exp04.get(name, 0)) <= 0:
+                raise ValueError(f"exp04.{name} must be positive")
+        for name in ("risk_distance", "target_tolerance_degrees"):
+            if float(exp04.get(name, 0.0)) <= 0.0:
+                raise ValueError(f"exp04.{name} must be positive")
+
 
 def load_config(
     path: str | Path,
