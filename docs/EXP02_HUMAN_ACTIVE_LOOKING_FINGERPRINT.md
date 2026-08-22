@@ -7,6 +7,18 @@ The engineering scaffold is implemented as
 analysis for recorded Mouse First-Person Lab sessions.  It does not train a
 policy, does not call a remote model, and does not require `OPENROUTER_API_KEY`.
 
+Local verification passed with the complete pytest suite: `55 passed` in 149.89
+seconds.  The no-key PeekBench smoke pipeline used the deterministic `mock`
+backend, produced five snapshot IDs, repeated generation with identical IDs,
+and reran paired branches with an unchanged `branches.csv` SHA-256.
+
+Quest Slurm job `3769183` completed successfully with state `COMPLETED`, exit
+code `0:0`, and elapsed time `00:00:15` on commit
+`c71d6e477d9c0823df7fae3ea629b94addd14bfc`.  The job found no human
+demonstration sessions under `datasets/human_demos`, wrote a valid `no_data`
+summary, and created the expected artifact files under
+`results/human_active_looking_fingerprint/exp02_3769183/`.
+
 With no recorded sessions, the command exits successfully with a `no_data`
 summary.  With data, it writes episode, session, participant, split, and risk
 bin artifacts under `results/human_active_looking_fingerprint/`.
@@ -87,6 +99,17 @@ EXP02_DATA_ROOT=datasets/human_demos \
 EXP02_OUTPUT_DIR=results/human_active_looking_fingerprint/exp02_manual \
 bash setup/submit_quest.sh setup/exp02_human_active_looking.sbatch
 ```
+
+Reference no-data smoke:
+
+| Field | Value |
+| --- | --- |
+| Slurm job | `3769183` |
+| Commit | `c71d6e477d9c0823df7fae3ea629b94addd14bfc` |
+| State | `COMPLETED` |
+| Exit code | `0:0` |
+| Output | `results/human_active_looking_fingerprint/exp02_3769183/` |
+| Summary status | `no_data` |
 
 ## Ethics And Data Governance
 
