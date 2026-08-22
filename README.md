@@ -386,6 +386,10 @@ shards), followed by an `afterok` aggregation job. This avoids sharing PyTorch
 models through a local process pool and leaves each completed shard as an
 auditable artifact.
 
+The completed 1,000-seed results, spatial interpretation, and versioned compact
+tables are documented in
+[`docs/SAC_CNN_TRAJECTORY_DENSITY_REPORT.md`](docs/SAC_CNN_TRAJECTORY_DENSITY_REPORT.md).
+
 ### Evaluation
 
 ```bash

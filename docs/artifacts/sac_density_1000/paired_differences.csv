@@ -1,0 +1,15 @@
+bootstrap_95_high,bootstrap_95_low,field,left_method,mean_delta,paired_episodes,right_method
+0.431,0.367,clean_success,sac_active_gaze,0.399,1000,sac_head_clamped
+-0.362,-0.429,capture_episode,sac_active_gaze,-0.395,1000,sac_head_clamped
+17.057128764118612,12.081117569815486,return,sac_active_gaze,14.422787662950755,1000,sac_head_clamped
+-88.158,-93.40225,steps,sac_active_gaze,-90.708,1000,sac_head_clamped
+0.16137156374789402,0.14604329332068133,minimum_predator_distance,sac_active_gaze,0.15373873522720458,1000,sac_head_clamped
+-0.11654195214001871,-0.13815798788170464,path_cost,sac_active_gaze,-0.1266280475064602,1000,sac_head_clamped
+193.8985021477461,190.49660897916556,gaze_travel_degrees,sac_active_gaze,192.15259196805954,1000,sac_head_clamped
+0.959,0.931,clean_success,sac_active_gaze,0.945,1000,random_action
+-0.925,-0.955,capture_episode,sac_active_gaze,-0.94,1000,random_action
+202.66142963613493,196.6043653296233,return,sac_active_gaze,199.6156273375701,1000,random_action
+-268.37,-268.58205,steps,sac_active_gaze,-268.478,1000,random_action
+0.2610578167586518,0.24445146485238073,minimum_predator_distance,sac_active_gaze,0.2527435048531918,1000,random_action
+-1.2993241278927692,-1.3747895877737042,path_cost,sac_active_gaze,-1.3385598347740078,1000,random_action
+-3144.6826997754447,-3163.7188910972873,gaze_travel_degrees,sac_active_gaze,-3154.107424905807,1000,random_action
