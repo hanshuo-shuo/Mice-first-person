@@ -171,6 +171,15 @@ bash setup/submit_quest.sh setup/sac_cnn_train.sbatch
 和 active-gaze 三维动作；旧的 `setup/sac_train.sbatch` 仍是状态向量 MLP
 基线，两者不要混淆。
 
+完成训练后，运行 1,000 个新 held-out seeds/方法的配对轨迹与密度审计：
+
+```bash
+bash setup/submit_quest.sh setup/sac_cnn_density_1000.sbatch
+```
+
+默认读取 `sac_cnn_active_gaze_9903898` 的 final checkpoint，并使用普通 CPU
+分区的 16 workers 并行评估，不额外占用 GPU。
+
 ## 手动提交方式
 
 如果不使用本地辅助脚本：

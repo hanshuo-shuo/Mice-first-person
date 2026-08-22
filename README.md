@@ -367,6 +367,21 @@ Artifacts are written to
 metadata, TensorBoard logs, periodic/final/best checkpoints, evaluation JSONL
 and CSV summaries, GIFs, and top-down trajectory PNGs.
 
+Run the project-level 1,000-seed trajectory and density audit after a checkpoint
+is frozen:
+
+```bash
+bash setup/submit_quest.sh setup/sac_cnn_density_1000.sbatch
+```
+
+The default audit pairs active gaze, inference-time head clamping, and random
+actions on seeds 1,000,000--1,000,999. It stores trajectories in flat,
+pickle-free NPZ files and produces episode tables, paired bootstrap intervals,
+trajectory overlays, episode-normalized occupancy density, capture density,
+safety/efficiency distributions, head-yaw density, and a Markdown report. Each
+episode contributes unit mass to the primary occupancy map, so slower methods
+cannot dominate the density merely by taking more steps.
+
 ### Evaluation
 
 ```bash
