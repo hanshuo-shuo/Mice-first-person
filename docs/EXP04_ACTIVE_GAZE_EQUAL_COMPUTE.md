@@ -15,6 +15,14 @@ height, eye count, simulator horizon, time step, and observation duration are
 registered in every record. `_assert_equal_budgets` aborts evaluation if any
 budget differs.
 
+Different gaze policies can terminate on different steps. For those snapshots,
+the evaluator first performs a deterministic preflight from the same exact
+state, takes the earliest termination step as a common censoring horizon, and
+then restores the source state before rerunning every method to that horizon.
+Only the equal-budget reruns enter outcome statistics. Preflight step counts,
+the chosen horizon, and the fraction of censored snapshots are saved explicitly;
+terminal observations are never padded or fabricated.
+
 All gaze commands use the normal three-dimensional normalized action and remain
 subject to the existing +/-60 degree head-yaw contract. Motion uses the same
 public-history rule for all methods, so only the gaze-target rule changes.

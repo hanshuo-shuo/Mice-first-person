@@ -188,6 +188,38 @@ def _assert_equal_budgets(methods: Mapping[str, Mapping[str, Any]]) -> Mapping[s
     return dict(canonical)
 
 
+def _evaluate_methods(
+    env,
+    state: Mapping[str, Any],
+    *,
+    config: Mapping[str, Any],
+    snapshot_index: int,
+    horizon_steps: int,
+) -> dict[str, dict[str, Any]]:
+    settings = config["exp04"]
+    methods = {}
+    for method_index, method in enumerate(METHOD_ORDER):
+        controller = _EqualBudgetController(
+            method=method,
+            seed=int(config["seed"]) + snapshot_index * 1009 + method_index,
+            head_yaw_limit=60.0,
+            candidates=config["gaze_candidates_degrees"],
+            tolerance_degrees=float(settings["target_tolerance_degrees"]),
+            scan_dwell_steps=int(settings["scan_dwell_steps"]),
+        )
+        branch = _run_branch(
+            env,
+            state,
+            method=method,
+            action_builder=controller,
+            horizon_steps=int(horizon_steps),
+            risk_distance=float(settings["risk_distance"]),
+        )
+        branch["budget"] = _registered_budget(branch, config=config)
+        methods[method] = branch
+    return methods
+
+
 def run_exp04_evaluation(
     config: Mapping[str, Any], *, project_root: Path = PROJECT_ROOT
 ) -> Mapping[str, Any]:
@@ -200,26 +232,33 @@ def run_exp04_evaluation(
             if not snapshot["use_predator"]:
                 continue
             state = load_state(experiment_dir / snapshot["state_path"])
-            methods = {}
-            for method_index, method in enumerate(METHOD_ORDER):
-                controller = _EqualBudgetController(
-                    method=method,
-                    seed=int(config["seed"]) + snapshot_index * 1009 + method_index,
-                    head_yaw_limit=60.0,
-                    candidates=config["gaze_candidates_degrees"],
-                    tolerance_degrees=float(settings["target_tolerance_degrees"]),
-                    scan_dwell_steps=int(settings["scan_dwell_steps"]),
+            requested_horizon = int(settings["horizon_steps"])
+            methods = _evaluate_methods(
+                env,
+                state,
+                config=config,
+                snapshot_index=snapshot_index,
+                horizon_steps=requested_horizon,
+            )
+            preflight_steps = {
+                method: len(branch["actions"])
+                for method, branch in methods.items()
+            }
+            common_horizon = min(preflight_steps.values())
+            if common_horizon <= 0:
+                raise RuntimeError(
+                    f"EXP-04 snapshot {snapshot['snapshot_id']} has no common "
+                    "positive observation horizon",
                 )
-                branch = _run_branch(
+            rerun_for_common_censoring = len(set(preflight_steps.values())) > 1
+            if rerun_for_common_censoring:
+                methods = _evaluate_methods(
                     env,
                     state,
-                    method=method,
-                    action_builder=controller,
-                    horizon_steps=int(settings["horizon_steps"]),
-                    risk_distance=float(settings["risk_distance"]),
+                    config=config,
+                    snapshot_index=snapshot_index,
+                    horizon_steps=common_horizon,
                 )
-                branch["budget"] = _registered_budget(branch, config=config)
-                methods[method] = branch
             common_budget = _assert_equal_budgets(methods)
             records.append({
                 "snapshot_id": snapshot["snapshot_id"],
@@ -227,6 +266,10 @@ def run_exp04_evaluation(
                 "methods": methods,
                 "budget_equal": True,
                 "common_budget": common_budget,
+                "requested_horizon_steps": requested_horizon,
+                "common_censoring_horizon_steps": common_horizon,
+                "preflight_steps": preflight_steps,
+                "rerun_for_common_censoring": rerun_for_common_censoring,
             })
     finally:
         env.close()
@@ -260,6 +303,20 @@ def run_exp04_evaluation(
         "experiment": "EXP-04 Active Gaze Without Free Compute",
         "snapshots": len(records),
         "all_budgets_equal": all(record["budget_equal"] for record in records),
+        "common_censoring": {
+            "snapshots_rerun": sum(
+                record["rerun_for_common_censoring"] for record in records
+            ),
+            "fraction_rerun": float(
+                np.mean(
+                    [record["rerun_for_common_censoring"] for record in records],
+                ),
+            ),
+            "minimum_horizon_steps": min(
+                record["common_censoring_horizon_steps"] for record in records
+            ),
+            "preflight_used_for_outcomes": False,
+        },
         "controlled_fields": [
             "image_frames",
             "model_calls",
