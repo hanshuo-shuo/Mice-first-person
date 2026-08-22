@@ -4,6 +4,7 @@ import pytest
 from analysis.sac_trajectory_density import (
     capture_density,
     episode_normalized_density,
+    interval_error,
     pack_traces,
     unpack_state_traces,
     wilson_interval,
@@ -70,6 +71,11 @@ def test_wilson_interval_retains_uncertainty_at_observed_ceiling():
     low, high = wilson_interval(40, 40)
     assert low == pytest.approx(0.9124, abs=1e-3)
     assert high == pytest.approx(1.0)
+
+
+def test_interval_error_clips_endpoint_roundoff():
+    assert interval_error(0.0, 1e-19, 0.01) == pytest.approx((0.0, 0.01))
+    assert interval_error(1.0, 0.99, 1.0 - 1e-16) == pytest.approx((0.01, 0.0))
 
 
 def test_shard_bounds_cover_odd_total_without_overlap():

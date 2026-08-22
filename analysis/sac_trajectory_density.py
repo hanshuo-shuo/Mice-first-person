@@ -368,6 +368,12 @@ def wilson_interval(successes: int, total: int, z: float = 1.959963984540054) ->
     return centre - margin, centre + margin
 
 
+def interval_error(rate: float, low: float, high: float) -> tuple[float, float]:
+    """Return non-negative plotting errors despite endpoint round-off."""
+
+    return max(0.0, float(rate) - float(low)), max(0.0, float(high) - float(rate))
+
+
 def summarize_methods(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for method in METHODS:
@@ -646,23 +652,21 @@ def plot_outcome_distributions(
     capture = [summaries[method]["capture_episode_rate"] for method in METHODS]
     success_errors = np.asarray(
         [
-            [
-                summaries[method]["clean_success_rate"]
-                - summaries[method]["clean_success_ci_low"],
-                summaries[method]["clean_success_ci_high"]
-                - summaries[method]["clean_success_rate"],
-            ]
+            interval_error(
+                summaries[method]["clean_success_rate"],
+                summaries[method]["clean_success_ci_low"],
+                summaries[method]["clean_success_ci_high"],
+            )
             for method in METHODS
         ],
     ).T
     capture_errors = np.asarray(
         [
-            [
-                summaries[method]["capture_episode_rate"]
-                - summaries[method]["capture_episode_ci_low"],
-                summaries[method]["capture_episode_ci_high"]
-                - summaries[method]["capture_episode_rate"],
-            ]
+            interval_error(
+                summaries[method]["capture_episode_rate"],
+                summaries[method]["capture_episode_ci_low"],
+                summaries[method]["capture_episode_ci_high"],
+            )
             for method in METHODS
         ],
     ).T
