@@ -52,3 +52,28 @@ python -m benchmarks.peekbench exp03 --config configs/peekbench/exp03.yaml
 Outputs are `exp03.jsonl`, `exp03_predictions.csv`, and `exp03_summary.json`
 under `results/peekbench/<experiment_id>/`. Smoke results are engineering
 evidence only and never verify the research hypothesis.
+
+## Quest controlled run — 2026-08-22
+
+- Slurm job: `3773769`
+- Git commit: `15209e0fa69d9fdc14c12fd9c06ce3f68f3be606`
+- Result directory: `exp03_memory_is_not_more_frames_3773769`
+- Status: `COMPLETED`, exit code `0:0`, elapsed `00:03:01`
+- Pairs: 100 unique exact-state pairs from 100 near-occlusion cells
+- Contract checks: all current public observations byte-identical; all paired
+  target actions different; all threat/control state-hash pairs unique
+
+| Method | Condition accuracy | Both conditions correct |
+| --- | ---: | ---: |
+| Single-frame reactive | 0.50 | 0.00 |
+| Four-frame stack | 0.50 | 0.00 |
+| Fixed-gate GRU belief probe | 1.00 | 1.00 |
+| Full-history attention probe | 1.00 | 1.00 |
+| Privileged belief reference | 1.00 | 1.00 |
+| Registered textual-memory probe | 1.00 | 1.00 |
+
+This controlled construction demonstrates that current-frame detection and a
+short stack are insufficient for these pairs, while registered persistent
+state is sufficient. It does **not** establish learned GRU, transformer, or VLM
+generalization: those entries remain deterministic diagnostic probes, and all
+pairs come from the near-occlusion anchor set.
