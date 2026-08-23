@@ -18,7 +18,9 @@ physics, predator navigation, reward, termination, network architecture,
 training budget, and exact task banks. Only Active can issue head actions.
 
 The registered training seeds are `2026082401`--`2026082405`. Each checkpoint
-receives one million training transitions. Final inference treats the five
+receives 400,000 training transitions, a budget selected to fit Quest's hard
+48-hour `gengpu` walltime using the measured throughput of the earlier 300k
+run. Final inference treats the five
 training seeds, not the 1,000 tasks within one checkpoint, as the replication
 unit. Per-condition reports include the mean, sample standard deviation,
 range, and a t interval across the five independently trained checkpoints.
@@ -89,6 +91,13 @@ Submit the full Quest dependency chain:
 
 ```bash
 bash setup/submit_matched_training.sh
+```
+
+Before the full matrix, the four conditions can be exercised sequentially on
+one A100 with four environment workers and one held-out test task each:
+
+```bash
+bash setup/submit_quest.sh setup/matched_sac_acceptance.sbatch
 ```
 
 The chain contains 20 A100 training tasks, 100 CPU test shards after all
