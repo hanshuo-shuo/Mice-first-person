@@ -412,6 +412,18 @@ is frozen:
 bash setup/submit_sac_cnn_density_1000.sh
 ```
 
+Run EXP-05 on the same frozen checkpoint and held-out seeds to separate learned
+active gaze from fixed camera placement at 0, +60, -60, and +30 degrees, plus a
+fixed scan:
+
+```bash
+bash setup/submit_sac_gaze_ablation_1000.sh
+```
+
+The primary paired comparison is active gaze versus fixed +60 degrees. See
+[`docs/EXP05_ACTIVE_GAZE_OR_CAMERA_POSE.md`](docs/EXP05_ACTIVE_GAZE_OR_CAMERA_POSE.md)
+for the exact intervention and statistics.
+
 The default audit pairs active gaze, inference-time head clamping, and random
 actions on seeds 1,000,000--1,000,999. It stores trajectories in flat,
 pickle-free NPZ files and produces episode tables, paired bootstrap intervals,

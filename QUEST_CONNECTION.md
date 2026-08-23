@@ -217,6 +217,16 @@ bash setup/submit_sac_cnn_density_1000.sh
 分区的 30 个单进程 array shards（3 方法 × 10 seed shards）并行评估，不额外
 占用 GPU。所有 shard 成功后，依赖作业自动聚合 NPZ/JSONL、统计和图表。
 
+在同一个 final checkpoint 和同一组 1,000 seeds 上运行 EXP-05 相机位置消融：
+
+```bash
+bash setup/submit_sac_gaze_ablation_1000.sh
+```
+
+该任务比较 learned active gaze、固定 0/+60/-60/+30 度和固定扫描；主比较是
+Active vs Fixed +60 度。它使用 60 个 CPU array shards，之后自动聚合逐 seed
+配对差异、bootstrap 区间和 exact McNemar 检验。
+
 ## 手动提交方式
 
 如果不使用本地辅助脚本：
