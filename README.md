@@ -424,6 +424,20 @@ The primary paired comparison is active gaze versus fixed +60 degrees. See
 [`docs/EXP05_ACTIVE_GAZE_OR_CAMERA_POSE.md`](docs/EXP05_ACTIVE_GAZE_OR_CAMERA_POSE.md)
 for the exact intervention and statistics.
 
+The required follow-up is matched training across five training seeds per
+condition on randomized, held-out task banks. It trains Active, Fixed 0,
+Fixed +60, and preset scan from scratch; the old fixed start-goal route is not
+used:
+
+```bash
+bash setup/submit_matched_training.sh
+```
+
+See
+[`docs/MATCHED_TRAINING_GENERALIZATION.md`](docs/MATCHED_TRAINING_GENERALIZATION.md)
+for the registered Train/Validation/Test region split, task manifest hashes,
+training-seed statistics, and the remaining cross-layout/world blocker.
+
 The default audit pairs active gaze, inference-time head clamping, and random
 actions on seeds 1,000,000--1,000,999. It stores trajectories in flat,
 pickle-free NPZ files and produces episode tables, paired bootstrap intervals,

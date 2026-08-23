@@ -1,0 +1,84 @@
+{
+  "cell_pool_counts": {
+    "northeast": {
+      "evaluation": 28,
+      "training": 56
+    },
+    "northwest": {
+      "evaluation": 37,
+      "training": 40
+    },
+    "southeast": {
+      "evaluation": 25,
+      "training": 43
+    },
+    "southwest": {
+      "evaluation": 15,
+      "training": 51
+    }
+  },
+  "contract": {
+    "exact_pair_overlap": false,
+    "task_counts": {
+      "test": 1000,
+      "train": 4096,
+      "validation": 256
+    },
+    "test_paths_cross_heldout_occlusion_cells": true,
+    "test_region_held_out": true,
+    "validation_region_pair_held_out": true
+  },
+  "counts": {
+    "test": 1000,
+    "train": 4096,
+    "validation": 256
+  },
+  "heldout_occlusion_cell_count": 39,
+  "heldout_test_region": "southeast",
+  "predator_speed_ratios": [
+    0.1,
+    0.15,
+    0.2,
+    0.25
+  ],
+  "regions": [
+    "northwest",
+    "northeast",
+    "southwest",
+    "southeast"
+  ],
+  "seed": 20260824,
+  "train_region_pairs": [
+    [
+      "northwest",
+      "southwest"
+    ],
+    [
+      "northeast",
+      "northwest"
+    ],
+    [
+      "northeast",
+      "southwest"
+    ],
+    [
+      "southwest",
+      "northwest"
+    ],
+    [
+      "southwest",
+      "northeast"
+    ]
+  ],
+  "training_regions": [
+    "northwest",
+    "northeast",
+    "southwest"
+  ],
+  "validation_region_pair": [
+    "northwest",
+    "northeast"
+  ],
+  "version": 1,
+  "world_name": "21_05"
+}

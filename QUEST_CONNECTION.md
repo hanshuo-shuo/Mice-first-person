@@ -227,6 +227,17 @@ bash setup/submit_sac_gaze_ablation_1000.sh
 Active vs Fixed +60 度。它使用 60 个 CPU array shards，之后自动聚合逐 seed
 配对差异、bootstrap 区间和 exact McNemar 检验。
 
+提交 matched training（4 conditions × 5 training seeds），随后在同一组 1,000
+个 held-out southeast tasks 上评估并以 training seed 为统计重复单位：
+
+```bash
+bash setup/submit_matched_training.sh
+```
+
+该 dependency chain 先提交 20 个 A100 training array tasks；全部成功后提交
+100 个 CPU test shards；最后聚合每个 checkpoint、每个 condition 和五个配对
+training-seed differences。训练不再使用固定 `(0.05, 0.5) -> (1.0, 0.5)` 路线。
+
 ## 手动提交方式
 
 如果不使用本地辅助脚本：

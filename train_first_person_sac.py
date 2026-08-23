@@ -20,6 +20,8 @@ from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback,
 from benchmarks.peekbench.artifacts import write_json
 from training.first_person_sac import (
     PROJECT_ROOT,
+    MATCHED_CONDITIONS,
+    apply_matched_condition,
     apply_smoke_overrides,
     load_sac_config,
     make_vec_env,
@@ -41,6 +43,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--total-timesteps", type=int)
     parser.add_argument("--num-envs", type=int)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"))
+    parser.add_argument("--condition", choices=tuple(MATCHED_CONDITIONS))
+    parser.add_argument("--seed", type=int)
     parser.add_argument(
         "--smoke",
         action="store_true",
@@ -67,6 +71,10 @@ def resolved_config(args: argparse.Namespace) -> dict:
         config["training"]["device"] = args.device
         if args.device != "cuda":
             config["training"]["require_cuda"] = False
+    if args.seed is not None:
+        config["seed"] = int(args.seed)
+    if args.condition is not None:
+        config = apply_matched_condition(config, args.condition)
     validate_sac_config(config)
     return config
 
@@ -86,12 +94,24 @@ def train(config: dict) -> dict:
         config,
         num_envs=num_envs,
         monitor_dir=output_dir / "monitor" / "train",
+        task_split=(
+            str(config["task_distribution"]["train_split"])
+            if config.get("task_distribution") is not None
+            else None
+        ),
+        task_selection_mode="random",
     )
     eval_env = make_vec_env(
         config,
         num_envs=1,
         monitor_dir=output_dir / "monitor" / "eval",
         seed_offset=1_000_000,
+        task_split=(
+            str(config["task_distribution"]["validation_split"])
+            if config.get("task_distribution") is not None
+            else None
+        ),
+        task_selection_mode="sequential",
     )
     checkpoints_dir = output_dir / "checkpoints"
     best_dir = output_dir / "best"

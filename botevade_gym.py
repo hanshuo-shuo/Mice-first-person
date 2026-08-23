@@ -30,6 +30,7 @@ from gymnasium import spaces
 from enum import Enum
 from util import find, normalize_angle, load_cell_ids_near_occlusion
 from first_person import FirstPersonVisionWrapper
+from task_distribution import TaskBank
 
 print("Using env3 (point-mass): (ax, ay) action, velocity in observation")
 
@@ -182,7 +183,9 @@ class BotEvadeEnv(Environment):
                  predator_prey_forward_speed_ratio: float = 0.15,
                  predator_prey_turning_speed_ratio: float = .175,
                  max_line_of_sight_distance: float = 1.0,
-                 predator_prey_line_of_sight_ratio: float = 1.0):
+                 predator_prey_line_of_sight_ratio: float = 1.0,
+                 task_manifest_path: typing.Optional[str] = None,
+                 task_selection_mode: str = "random"):
 
         if observation_type == BotEvadeEnv.ObservationType.PIXELS and not render:
             raise ValueError("Cannot use PIXELS observation type without render")
@@ -224,6 +227,18 @@ class BotEvadeEnv(Environment):
                                      predator_prey_turning_speed_ratio=predator_prey_turning_speed_ratio,
                                      max_line_of_sight_distance=max_line_of_sight_distance,
                                      predator_prey_line_of_sight_ratio=predator_prey_line_of_sight_ratio)
+        self.task_manifest_path = task_manifest_path
+        self.task_bank = (
+            None
+            if task_manifest_path is None
+            else TaskBank.from_path(task_manifest_path, mode=task_selection_mode)
+        )
+        self.current_task: typing.Optional[dict] = None
+        self._base_predator_max_forward_speed = (
+            float(self.model.predator.max_forward_speed)
+            if self.model.use_predator
+            else None
+        )
         # Save original view field of prey; used for resetting view field of prey
         self.original_prey_view_field = self.model.prey.view_field
         self.observation_type = observation_type
@@ -420,6 +435,9 @@ class BotEvadeEnv(Environment):
         if self.model.use_predator:
             info["predator_x"] = self.model.predator.state.location[0]
             info["predator_y"] = self.model.predator.state.location[1]
+        if self.current_task is not None:
+            info["task_id"] = str(self.current_task["task_id"])
+            info["task_split"] = str(self.current_task["split"])
         return info
 
     def __update_observation__(self):
@@ -652,6 +670,9 @@ class BotEvadeEnv(Environment):
             "observation": np.array(self.observation, copy=True),
             "frame_stack": frame_stack,
         }
+        if self.task_bank is not None:
+            environment_state["current_task"] = copy.deepcopy(self.current_task)
+            environment_state["task_bank"] = self.task_bank.get_state_dict()
 
         return {
             "version": 1,
@@ -699,6 +720,15 @@ class BotEvadeEnv(Environment):
             self.reward_terms = copy.deepcopy(environment_state["reward_terms"])
         if "previous_action" in environment_state:
             self.previous_action = copy.deepcopy(environment_state["previous_action"])
+        if "current_task" in environment_state:
+            self.current_task = copy.deepcopy(environment_state["current_task"])
+            if self.current_task is not None and self.model.use_predator:
+                self.model.predator.max_forward_speed = (
+                    float(self.model.prey.max_forward_speed)
+                    * float(self.current_task["predator_speed_ratio"])
+                )
+        if self.task_bank is not None and environment_state.get("task_bank") is not None:
+            self.task_bank.set_state_dict(environment_state["task_bank"])
 
         if "observation" in environment_state:
             observation = np.asarray(environment_state["observation"])
@@ -736,8 +766,43 @@ class BotEvadeEnv(Environment):
         if seed is not None:
             model_seed = int(self.np_random.integers(0, 2**63 - 1))
             self.model.set_rng(seed=model_seed)
-        self.model.reset()
-        return self.__reset__()
+        agents_state = None
+        if self.task_bank is not None:
+            self.current_task = self.task_bank.select(self.np_random, options=options)
+            if self.current_task["world_name"] != self.loader.world_name:
+                raise ValueError("Task world does not match the environment world")
+            self.model.goal_location = tuple(self.current_task["goal_location"])
+            agents_state = {
+                "prey": cwgame.AgentState(
+                    location=tuple(self.current_task["start_location"]),
+                    body_heading=float(
+                        self.current_task["prey_body_heading_degrees"],
+                    ),
+                    velocity=(0.0, 0.0),
+                ),
+            }
+            if self.model.use_predator:
+                self.model.predator.max_forward_speed = (
+                    float(self.model.prey.max_forward_speed)
+                    * float(self.current_task["predator_speed_ratio"])
+                )
+                agents_state["predator"] = cwgame.AgentState(
+                    location=tuple(self.current_task["predator_location"]),
+                    body_heading=float(
+                        self.current_task["predator_body_heading_degrees"],
+                    ),
+                )
+        else:
+            self.current_task = None
+            if self.model.use_predator:
+                self.model.predator.max_forward_speed = float(
+                    self._base_predator_max_forward_speed,
+                )
+        self.model.reset(agents_state=agents_state)
+        observation, info = self.__reset__()
+        if self.current_task is not None:
+            info["task"] = copy.deepcopy(self.current_task)
+        return observation, info
 
     def replay_reset(self, agents_state: typing.Dict[str, cwgame.AgentState]):
         self.model.reset()
@@ -770,6 +835,19 @@ class FirstPersonBotEvadeEnv(FirstPersonVisionWrapper):
         max_head_turn_rate: float = 240.0,
         head_yaw_limit: float = 60.0,
         head_recenter_rate: float = 90.0,
+        passive_gaze_mode: str = "center",
+        fixed_head_yaw_degrees: float = 0.0,
+        passive_scan_targets_degrees: typing.Sequence[float] = (
+            -60.0,
+            -30.0,
+            0.0,
+            30.0,
+            60.0,
+            30.0,
+            0.0,
+            -30.0,
+        ),
+        passive_scan_dwell_steps: int = 2,
         velocity_gain: float = 5.0,
         render_mode: str = "rgb_array",
         **kwargs,
@@ -802,6 +880,10 @@ class FirstPersonBotEvadeEnv(FirstPersonVisionWrapper):
             max_head_turn_rate=max_head_turn_rate,
             head_yaw_limit=head_yaw_limit,
             head_recenter_rate=head_recenter_rate,
+            passive_gaze_mode=passive_gaze_mode,
+            fixed_head_yaw_degrees=fixed_head_yaw_degrees,
+            passive_scan_targets_degrees=passive_scan_targets_degrees,
+            passive_scan_dwell_steps=passive_scan_dwell_steps,
             velocity_gain=velocity_gain,
             render_mode=render_mode,
         )

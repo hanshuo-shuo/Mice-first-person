@@ -656,6 +656,19 @@ class FirstPersonVisionWrapper(gym.Wrapper):
         max_head_turn_rate: float = 240.0,
         head_yaw_limit: float = 60.0,
         head_recenter_rate: float = 90.0,
+        passive_gaze_mode: str = "center",
+        fixed_head_yaw_degrees: float = 0.0,
+        passive_scan_targets_degrees: typing.Sequence[float] = (
+            -60.0,
+            -30.0,
+            0.0,
+            30.0,
+            60.0,
+            30.0,
+            0.0,
+            -30.0,
+        ),
+        passive_scan_dwell_steps: int = 2,
         velocity_gain: float = 5.0,
     ) -> None:
         if render_mode not in self.metadata["render_modes"]:
@@ -679,6 +692,21 @@ class FirstPersonVisionWrapper(gym.Wrapper):
             raise ValueError("body/head turn rates must be positive")
         if head_yaw_limit <= 0 or head_recenter_rate < 0:
             raise ValueError("head_yaw_limit must be positive and recenter rate non-negative")
+        if passive_gaze_mode not in ("center", "fixed", "scan"):
+            raise ValueError("passive_gaze_mode must be center, fixed, or scan")
+        if action_mode == "egocentric_velocity_head" and passive_gaze_mode != "center":
+            raise ValueError("Policy-controlled head yaw cannot also use passive gaze")
+        if action_mode != "egocentric_velocity" and passive_gaze_mode != "center":
+            raise ValueError("Passive gaze requires action_mode=egocentric_velocity")
+        if abs(float(fixed_head_yaw_degrees)) > float(head_yaw_limit):
+            raise ValueError("fixed_head_yaw_degrees exceeds head_yaw_limit")
+        if not passive_scan_targets_degrees or any(
+            abs(float(value)) > float(head_yaw_limit)
+            for value in passive_scan_targets_degrees
+        ):
+            raise ValueError("Passive scan targets must lie within the head-yaw limit")
+        if int(passive_scan_dwell_steps) <= 0:
+            raise ValueError("passive_scan_dwell_steps must be positive")
         if velocity_gain <= 0:
             raise ValueError("velocity_gain must be positive")
         if detection_range is not None and detection_range <= 0:
@@ -704,6 +732,12 @@ class FirstPersonVisionWrapper(gym.Wrapper):
         self.max_head_turn_rate = float(max_head_turn_rate)
         self.head_yaw_limit = float(head_yaw_limit)
         self.head_recenter_rate = float(head_recenter_rate)
+        self.passive_gaze_mode = str(passive_gaze_mode)
+        self.fixed_head_yaw_degrees = float(fixed_head_yaw_degrees)
+        self.passive_scan_targets_degrees = tuple(
+            float(value) for value in passive_scan_targets_degrees
+        )
+        self.passive_scan_dwell_steps = int(passive_scan_dwell_steps)
         self.velocity_gain = float(velocity_gain)
         self._control_dt = float(getattr(env.unwrapped, "time_step", 0.1))
         if self._control_dt <= 0:
@@ -773,6 +807,7 @@ class FirstPersonVisionWrapper(gym.Wrapper):
         self.state_observation: typing.Optional[np.ndarray] = None
         self._last_frame: typing.Optional[RGBFrame] = None
         self._head_yaw_degrees = 0.0
+        self._passive_gaze_step = 0
         self._last_body_turn_command = 0.0
         self._previous_action = self._zero_policy_action()
         self._predator_visibility: typing.Dict[str, bool] = self._empty_predator_visibility()
@@ -827,7 +862,12 @@ class FirstPersonVisionWrapper(gym.Wrapper):
         return np.zeros((1,), dtype=np.float32)
 
     def _reset_embodiment_state(self) -> None:
-        self._head_yaw_degrees = 0.0
+        self._head_yaw_degrees = (
+            self.fixed_head_yaw_degrees
+            if self.passive_gaze_mode == "fixed"
+            else 0.0
+        )
+        self._passive_gaze_step = 0
         self._last_body_turn_command = 0.0
         self._previous_action = self._zero_policy_action()
 
@@ -878,6 +918,19 @@ class FirstPersonVisionWrapper(gym.Wrapper):
                     self.head_yaw_limit,
                 ),
             )
+        elif self.passive_gaze_mode == "fixed":
+            self._head_yaw_degrees = self.fixed_head_yaw_degrees
+        elif self.passive_gaze_mode == "scan":
+            target_index = (
+                self._passive_gaze_step // self.passive_scan_dwell_steps
+            ) % len(self.passive_scan_targets_degrees)
+            target = self.passive_scan_targets_degrees[target_index]
+            self._head_yaw_degrees = self._move_toward(
+                self._head_yaw_degrees,
+                target,
+                self.max_head_turn_rate * self._control_dt,
+            )
+            self._passive_gaze_step += 1
         else:
             self._head_yaw_degrees = 0.0
 
@@ -1101,6 +1154,10 @@ class FirstPersonVisionWrapper(gym.Wrapper):
             "last_frame": copy.deepcopy(self._last_frame),
             "predator_visibility": copy.deepcopy(self._predator_visibility),
         }
+        if self.passive_gaze_mode == "scan":
+            state["first_person"]["passive_gaze_step"] = int(
+                self._passive_gaze_step,
+            )
         return state
 
     def set_state_dict(self, state: dict) -> None:
@@ -1113,6 +1170,8 @@ class FirstPersonVisionWrapper(gym.Wrapper):
         embodiment_state = state.get("first_person", {})
         if "head_yaw_degrees" in embodiment_state:
             self._head_yaw_degrees = float(embodiment_state["head_yaw_degrees"])
+        if "passive_gaze_step" in embodiment_state:
+            self._passive_gaze_step = int(embodiment_state["passive_gaze_step"])
         if "last_body_turn_command" in embodiment_state:
             self._last_body_turn_command = float(embodiment_state["last_body_turn_command"])
         if "previous_action" in embodiment_state:
