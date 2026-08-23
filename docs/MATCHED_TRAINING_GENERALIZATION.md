@@ -100,6 +100,13 @@ one A100 with four environment workers and one held-out test task each:
 bash setup/submit_quest.sh setup/matched_sac_acceptance.sbatch
 ```
 
+To queue the full chain behind that acceptance job:
+
+```bash
+MATCHED_ACCEPTANCE_JOB_ID=<ACCEPTANCE_JOB_ID> \
+  bash setup/submit_matched_training.sh
+```
+
 The chain contains 20 A100 training tasks, 100 CPU test shards after all
 training succeeds, and one aggregate job. The aggregate writes per-checkpoint,
 per-condition, and paired training-seed tables under
