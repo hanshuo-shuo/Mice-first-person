@@ -3,6 +3,7 @@
 #SBATCH --account=p31777
 #SBATCH --partition=gengpu
 #SBATCH --gres=gpu:a100:1
+#SBATCH --constraint=pcie
 #SBATCH --time=00:30:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

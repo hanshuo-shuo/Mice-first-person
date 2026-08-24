@@ -16,6 +16,10 @@ with five shared training seeds per condition:
 All conditions share the binocular renderer, proprioception, locomotion
 physics, predator navigation, reward, termination, network architecture,
 training budget, and exact task banks. Only Active can issue head actions.
+Simulator navigation/visibility geometry tensors are forced to CPU at the
+environment factory boundary; only the SAC networks use the assigned GPU.
+This keeps behavior and memory use consistent across Quest's 40GB and 80GB
+A100 nodes.
 
 The registered training seeds are `2026082401`--`2026082405`. Each checkpoint
 receives 400,000 training transitions, a budget selected to fit Quest's hard
@@ -94,7 +98,8 @@ bash setup/submit_matched_training.sh
 ```
 
 Before the full matrix, the four conditions can be exercised sequentially on
-one A100 with four environment workers and one held-out test task each:
+one 40GB A100 (`pcie` constraint) with four environment workers and one
+held-out test task each:
 
 ```bash
 bash setup/submit_quest.sh setup/matched_sac_acceptance.sbatch

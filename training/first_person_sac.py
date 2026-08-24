@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib
 import json
 from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
+import torch
 import yaml
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecTransposeImage
@@ -219,6 +221,27 @@ def _task_manifest_path(config: Mapping[str, Any], split: str) -> Path:
     return root / f"{split}.jsonl"
 
 
+def force_cellworld_cpu() -> None:
+    """Keep simulator geometry tensors off the policy-training GPU.
+
+    Cellworld selects a module-level default device at import time.  Its
+    1000x1000 nearest-cell lookup consumes about 9 GiB per environment on
+    CUDA, so four workers plus an evaluation environment exceed a 40 GiB
+    A100.  SAC still receives its explicit CUDA device independently.
+    """
+
+    cpu = torch.device("cpu")
+    for module_name in (
+        "cellworld_game.torch.device",
+        "cellworld_game.torch.points",
+        "cellworld_game.torch.polygon",
+        "cellworld_game.torch.visibility",
+        "cellworld_game.torch.geometry",
+    ):
+        module = importlib.import_module(module_name)
+        module.default_device = cpu
+
+
 def make_first_person_env(
     config: Mapping[str, Any],
     *,
@@ -226,6 +249,7 @@ def make_first_person_env(
     task_selection_mode: str | None = None,
 ) -> FirstPersonBotEvadeEnv:
     cellworld_util.cellworld_cache_folder = str(PROJECT_ROOT / "cellworld_cache")
+    force_cellworld_cpu()
     values = config["environment"]
     reward_function = REWARD_FUNCTIONS[str(config["reward_function"])]
     task_settings = config.get("task_distribution")

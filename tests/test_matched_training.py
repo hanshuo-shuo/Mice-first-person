@@ -9,6 +9,7 @@ from task_distribution import TaskBank, load_task_records, validate_split_contra
 from training.first_person_sac import (
     MATCHED_CONDITIONS,
     apply_matched_condition,
+    force_cellworld_cpu,
     load_sac_config,
     make_first_person_env,
 )
@@ -134,6 +135,23 @@ def test_training_seed_interval_uses_five_seed_replication():
     low, high = _seed_interval(values)
     assert low < np.mean(values) < high
     assert _seed_interval([0.8] * 5) == (0.8, 0.8)
+
+
+def test_cellworld_simulator_tensors_are_forced_off_training_gpu():
+    modules = [
+        __import__(name, fromlist=["default_device"])
+        for name in (
+            "cellworld_game.torch.device",
+            "cellworld_game.torch.points",
+            "cellworld_game.torch.polygon",
+            "cellworld_game.torch.visibility",
+            "cellworld_game.torch.geometry",
+        )
+    ]
+    for module in modules:
+        module.default_device = __import__("torch").device("cuda")
+    force_cellworld_cpu()
+    assert all(str(module.default_device) == "cpu" for module in modules)
 
 
 def test_matched_aggregate_uses_training_seed_as_replication_unit(
