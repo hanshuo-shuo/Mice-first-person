@@ -179,27 +179,26 @@ response="$({
         "${mode}" \
         "${run_tag}" \
         "${evaluation_tag}" \
+        "${current_branch}" \
         "${candidate_commit}" \
         "${candidate_sha256}" \
         "${incumbent_commit}" \
         "${incumbent_sha256}" \
         "${shard_count}" \
-        "${current_branch}" \
-        "${local_head}" \
         "${remote_project}" <<'REMOTE'
 set -euo pipefail
 
 mode="$1"
 run_tag="$2"
 evaluation_tag="$3"
-candidate_commit="$4"
-candidate_sha256="$5"
-incumbent_commit="$6"
-incumbent_sha256="$7"
-shard_count="$8"
-submitted_branch="$9"
-submitted_commit="${10}"
-remote_project="${11}"
+submitted_branch="$4"
+candidate_commit="$5"
+candidate_sha256="$6"
+incumbent_commit="$7"
+incumbent_sha256="$8"
+shard_count="$9"
+remote_project="${10}"
+submitted_commit="${candidate_commit}"
 
 if [[ ! "${candidate_commit}" =~ ^[0-9a-f]{40}$ || "${candidate_commit}" != "${submitted_commit}" ]]; then
     echo "Error: candidate commit identity is invalid." >&2

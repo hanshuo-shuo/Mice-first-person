@@ -651,6 +651,12 @@ def test_cli_has_no_seed_horizon_or_artifact_override_and_scripts_are_safe():
     assert 'seed_set="development"' in submit_script
     assert 'incumbents/${incumbent_sha256}.py' in submit_script
     assert 'comparator_caches/${incumbent_sha256}.json' in submit_script
+    assert 'submitted_branch="$4"' in submit_script
+    assert 'candidate_commit="$5"' in submit_script
+    assert 'shard_count="$9"' in submit_script
+    assert 'remote_project="${10}"' in submit_script
+    assert 'submitted_commit="${candidate_commit}"' in submit_script
+    assert 'remote_project="${11}"' not in submit_script
 
     usage = subprocess.run(
         ["bash", str(root / "setup/submit_autoresearch_gaze.sh")],
