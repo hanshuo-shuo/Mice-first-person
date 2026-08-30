@@ -1,0 +1,80 @@
+schema_version: 1
+experiment_id: gaze_schedule_phase1
+description: >-
+  Engineering search over deterministic legal-rate gaze schedules with the
+  EXP-05 SAC checkpoint, locomotion policy, environment, and reward frozen.
+results_root: results/autoresearch
+
+source:
+  resolved_config_path: results/sac/sac_cnn_active_gaze_9903898/resolved_config.yaml
+  resolved_config_sha256: 468d8a5e63f966e9acea54071fd9f3972794fbd695573ce914be6bcf34682e9a
+  checkpoint_path: results/sac/sac_cnn_active_gaze_9903898/checkpoints/final_model.zip
+  checkpoint_sha256: 7133433da9aceb0d55cb181c1fc42bd2800ec4ba0cbf1e7368c079c6e5a955ec
+  historical_exp05_seed_start: 1000000
+  historical_exp05_episodes: 1000
+
+candidate:
+  path: autoresearch/candidate.py
+  class_name: CandidateGazeController
+  public_observation_fields:
+    - image_left
+    - image_right
+    - proprio
+    - previous_action
+  public_history_length: 4
+  initial_incumbent_id: legal_fixed_scan_v1
+  initial_incumbent_sha256: 75dcddcaf76ac189978e29daeb2b386778b8394be51f02e97839a1c74b69ec67
+  mutable_paths:
+    - autoresearch/candidate.py
+
+seed_sets:
+  smoke:
+    id: gaze-smoke-v1-1100000-4
+    seed_start: 1100000
+    episodes: 4
+    purpose: contract_and_determinism_only
+  development:
+    id: gaze-development-v1-1110000-128
+    seed_start: 1110000
+    episodes: 128
+    purpose: reusable_engineering_selection
+  confirmation:
+    id: gaze-confirmation-v1-1200000-1000
+    seed_start: 1200000
+    episodes: 1000
+    purpose: one_time_confirmatory_gate
+    one_time: true
+    requires_explicit_authorization: true
+  rationale: >-
+    All three contiguous ranges were frozen before evaluating a phase-1
+    candidate. They are disjoint from one another and from the already
+    analyzed EXP-05 range 1000000--1000999. Wide gaps make accidental reuse
+    apparent in manifests and logs.
+
+evaluation:
+  deterministic_policy: true
+  maximum_history_length: 4
+  bootstrap_samples: 5000
+  methods:
+    - candidate
+    - search_incumbent
+    - fixed_p60_research_reference
+  fixed_p60_is_prepositioned_reference: true
+
+decision:
+  primary_metric: paired_clean_success_delta
+  minimum_paired_episode_improvement: 2
+  capture_rate_must_not_exceed_incumbent: true
+  ties_keep_incumbent: true
+  confirmation_interval_must_exclude_zero: true
+  confirmation_capture_must_not_worsen: true
+
+budget:
+  max_experiments: 12
+  max_wall_seconds: 14400
+  max_consecutive_crashes: 3
+  on_exhausted: stop_successfully_and_report
+
+claims:
+  phase1_scope: engineering_selection
+  scientific_active_gaze_verification: false

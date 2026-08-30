@@ -6,6 +6,10 @@ while making experiments reproducible and falsifiable.
 
 ## Repository map
 
+- `docs/AUTORESEARCH_HANDOFF.md`: current handoff for the minimal autonomous
+  experiment closed loop.  Read it before implementing or running any
+  autoresearch workflow.
+
 - `botevade_gym.py`, `oasis_gym.py`: Gymnasium task adapters.  Physics,
   reward events, termination, frame stacks, and task bookkeeping live here.
 - `first_person.py`: binocular renderer and the first-person observation/action
