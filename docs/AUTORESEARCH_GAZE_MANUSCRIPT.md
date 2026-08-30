@@ -2,10 +2,9 @@
 
 ## Draft status
 
-This is a development-stage manuscript outline.  Bracketed confirmation text
-must remain unresolved until the one-time held-out experiment is explicitly
-authorized and completed.  The current evidence supports an engineering
-selection result only.
+This is a confirmation-complete engineering manuscript draft.  It still needs
+authorship, venue formatting, related-work review, and independently trained
+checkpoint replication before making a broad active-vision claim.
 
 ## Abstract
 
@@ -21,10 +20,13 @@ all experiment state is append-only and content-addressed.  On a registered
 with 6 capture episodes.  A learned-gaze passthrough tied success and was
 discarded for one additional capture.  A preregistered 50/50 blend of learned
 and scan head-rate commands achieved 125 clean successes with 3 capture
-episodes and was kept mechanically.  [Held-out 1,000-seed confirmation is
-unspent; no confirmatory effect is claimed.]  The result demonstrates a
-falsifiable autonomous engineering loop and identifies a candidate for
-confirmation, rather than verifying a general active-vision hypothesis.
+episodes and was kept mechanically.  On a one-time registered 1,000-seed
+confirmation set, the blend achieved 97.7% clean success versus 91.6% for the
+scan parent, a paired +6.1-point difference (bootstrap 95% interval +4.1 to
++8.1), while capture fell from 7.6% to 2.3%.  The exact McNemar p-value was
+`1.07e-9`.  The result demonstrates a falsifiable autonomous engineering loop
+and confirms a controller improvement for one frozen checkpoint, rather than
+verifying a general active-vision hypothesis.
 
 ## 1. Introduction
 
@@ -100,13 +102,21 @@ incumbent-only successes, for a +4/128 paired development improvement.  It
 also reduced mean episode length from 92.22 to 39.74 steps and gaze travel from
 1395.95 to 259.27 degrees; these were secondary, non-optimized outcomes.
 
-## 4. Confirmation analysis plan
+## 4. Held-out confirmation
 
-[Unresolved.]  Spend the registered confirmation set once.  Report the paired
-clean-success mean difference and deterministic bootstrap 95% interval,
-candidate-only and incumbent-only counts, exact McNemar p-value, capture
-non-worsening, and all contract checks.  The engineering gate passes only if
-the interval excludes zero favorably and capture does not worsen.
+The registered confirmation set was marked spent before any rollout and used
+once.  Across seeds `1200000..1200999`, E0003 achieved 977 clean successes and
+23 capture episodes.  Its scan parent achieved 916 clean successes and 76
+captures; the fixed +60 reference achieved 895 clean successes and 104
+captures.  The E0003–scan paired clean-success difference was +6.1 percentage
+points with bootstrap 95% interval `[+4.1, +8.1]`.  Discordant outcomes were
+82 E0003-only and 21 scan-only successes, giving exact McNemar
+`p=1.0696750216702926e-09`.
+
+E0003 also shortened mean episodes from 97.72 to 39.63 steps and reduced mean
+gaze travel from 1478.51 to 256.38 degrees.  These secondary outcomes were not
+part of the selection objective.  All authorization, deterministic-repeat,
+source-identity, record-completeness, exact-coverage, and leak checks passed.
 
 ## 5. Limitations
 
@@ -116,8 +126,9 @@ evaluation episodes are not independent training replicates.  The fixed +60
 reference receives a pre-positioned camera and therefore does not pay the same
 motion cost as a legal-rate controller.  The selected blend is deliberately
 simple and may be specific to this renderer, policy, speed regime, and task
-distribution.  Scientific claims about learned active sensing require the
-held-out gate and, ultimately, independently trained checkpoints.
+distribution.  The held-out gate confirms the frozen-checkpoint engineering
+result, but scientific claims about learned active sensing still require
+independently trained checkpoints.
 
 ## 6. Reproducibility and artifacts
 
@@ -127,4 +138,7 @@ commit `3a7214f0f1fed01baa0db6ba04e504af51b221f4`; its source SHA-256 is
 The append-only ledger, candidate sources, hypotheses, smoke results,
 development records, summaries, checks, and artifact hashes are stored below
 `results/autoresearch/gaze_schedule_20260830_v5/` and are intentionally not
-version-controlled source data.
+version-controlled source data.  The confirmation record identity is
+`d8dcc5bb4f98498d02bb26b35c6c52d3dafb6238f90fdba1ae9e00a85afb39b0`;
+the authorization marker, candidate/parent source snapshots, rebuilt
+statistics, and external aggregate manifest are sealed under `artifacts/C0001/`.
