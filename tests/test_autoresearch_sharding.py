@@ -618,7 +618,6 @@ def test_cli_has_no_seed_horizon_or_artifact_override_and_scripts_are_safe():
     for script in (shard_script, aggregate_script):
         assert "#SBATCH --ntasks=1" in script
         assert "#SBATCH --cpus-per-task=1" in script
-        assert "#SBATCH --mem=8G" in script
         assert "unset OPENROUTER_API_KEY" in script
         assert '--seed-set "${seed_set}"' in script
         assert 'seed_set="development"' in script
@@ -631,6 +630,8 @@ def test_cli_has_no_seed_horizon_or_artifact_override_and_scripts_are_safe():
         assert 'worktree_commit="${project_dir##*/}"' in script
         assert "git rev-parse" not in script
         assert "git status" not in script
+    assert "#SBATCH --mem=12G" in shard_script
+    assert "#SBATCH --mem=8G" in aggregate_script
     assert "git status --porcelain" in submit_script
     assert "git diff --quiet" in remote_submit_script
     assert "git diff --cached --quiet" in remote_submit_script
