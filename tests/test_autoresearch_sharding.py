@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -611,6 +612,9 @@ def test_cli_has_no_seed_horizon_or_artifact_override_and_scripts_are_safe():
     shard_script = (root / "setup/autoresearch_gaze_shards.sbatch").read_text()
     aggregate_script = (root / "setup/autoresearch_gaze_aggregate.sbatch").read_text()
     submit_script = (root / "setup/submit_autoresearch_gaze.sh").read_text()
+    remote_submit_script = (
+        root / "setup/remote_submit_autoresearch_gaze.sh"
+    ).read_text()
     for script in (shard_script, aggregate_script):
         assert "#SBATCH --ntasks=1" in script
         assert "#SBATCH --cpus-per-task=1" in script
@@ -625,19 +629,32 @@ def test_cli_has_no_seed_horizon_or_artifact_override_and_scripts_are_safe():
         assert "${incumbent_sha256}" in script
         assert "authorize-one-time-confirmation" not in script
     assert "git status --porcelain" in submit_script
-    assert "git diff --quiet" in submit_script
-    assert "git diff --cached --quiet" in submit_script
-    assert "Quest main checkout has tracked modifications" in submit_script
+    assert "git diff --quiet" in remote_submit_script
+    assert "git diff --cached --quiet" in remote_submit_script
+    assert "Quest main checkout has tracked modifications" in remote_submit_script
     assert "origin/${current_branch}" in submit_script
-    assert 'git worktree add --quiet --detach "${project_dir}" "${submitted_commit}"' in submit_script
-    assert "git switch" not in submit_script
-    assert "Mice-autoresearch-worktrees" in submit_script
-    assert 'ensure_results_link "${project_dir}/results/autoresearch"' in submit_script
-    assert 'ensure_results_link "${project_dir}/results/sac/sac_cnn_active_gaze_9903898"' in submit_script
+    assert (
+        'git worktree add --quiet --detach "${project_dir}" "${submitted_commit}"'
+        in remote_submit_script
+    )
+    assert "git switch" not in remote_submit_script
+    assert "Mice-autoresearch-worktrees" in remote_submit_script
+    assert (
+        'ensure_results_link "${project_dir}/results/autoresearch"'
+        in remote_submit_script
+    )
+    assert (
+        'ensure_results_link "${project_dir}/results/sac/sac_cnn_active_gaze_9903898"'
+        in remote_submit_script
+    )
     assert "ssh -O check" in submit_script
+    assert "<<'REMOTE'" not in submit_script
+    assert 'remote_script="${script_dir}/remote_submit_autoresearch_gaze.sh"' in submit_script
+    assert '"${remote_project}" < "${remote_script}" 2>&1' in submit_script
     assert "Submitted autoresearch ${mode} shards" in submit_script
     assert "Submitted autoresearch ${mode} aggregate" in submit_script
     assert "authorize-one-time-confirmation" not in submit_script
+    assert "authorize-one-time-confirmation" not in remote_submit_script
     assert "--candidate-source" not in submit_script
     assert "--incumbent-source" not in submit_script
     for option in (
@@ -647,16 +664,19 @@ def test_cli_has_no_seed_horizon_or_artifact_override_and_scripts_are_safe():
         "--incumbent-sha256",
     ):
         assert option in submit_script
-    assert 'git show "${source_commit}:autoresearch/candidate.py"' in submit_script
-    assert 'seed_set="development"' in submit_script
-    assert 'incumbents/${incumbent_sha256}.py' in submit_script
-    assert 'comparator_caches/${incumbent_sha256}.json' in submit_script
-    assert 'submitted_branch="$4"' in submit_script
-    assert 'candidate_commit="$5"' in submit_script
-    assert 'shard_count="$9"' in submit_script
-    assert 'remote_project="${10}"' in submit_script
-    assert 'submitted_commit="${candidate_commit}"' in submit_script
-    assert 'remote_project="${11}"' not in submit_script
+    assert (
+        'git show "${source_commit}:autoresearch/candidate.py"'
+        in remote_submit_script
+    )
+    assert 'seed_set="development"' in remote_submit_script
+    assert 'incumbents/${incumbent_sha256}.py' in remote_submit_script
+    assert 'comparator_caches/${incumbent_sha256}.json' in remote_submit_script
+    assert 'submitted_branch="$4"' in remote_submit_script
+    assert 'candidate_commit="$5"' in remote_submit_script
+    assert 'shard_count="$9"' in remote_submit_script
+    assert 'remote_project="${10}"' in remote_submit_script
+    assert 'submitted_commit="${candidate_commit}"' in remote_submit_script
+    assert 'remote_project="${11}"' not in remote_submit_script
 
     usage = subprocess.run(
         ["bash", str(root / "setup/submit_autoresearch_gaze.sh")],
@@ -671,3 +691,67 @@ def test_cli_has_no_seed_horizon_or_artifact_override_and_scripts_are_safe():
     assert "--incumbent-sha256" in usage.stderr
     assert "--candidate-source" not in usage.stderr
     assert "--incumbent-source" not in usage.stderr
+
+
+def test_remote_submit_script_parses_and_binds_submitted_branch_read_only(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    remote_script = root / "setup/remote_submit_autoresearch_gaze.sh"
+
+    syntax = subprocess.run(
+        ["bash", "-n", str(remote_script)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert syntax.returncode == 0, syntax.stderr
+
+    remote_project = tmp_path / "remote-project"
+    remote_project.mkdir()
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        """#!/usr/bin/env bash
+printf 'FAKE_GIT'
+printf '|%s' "$@"
+printf '\n'
+if [[ "${1:-}" == "fetch" ]]; then
+    exit 37
+fi
+""",
+        encoding="utf-8",
+    )
+    fake_git.chmod(0o755)
+
+    fake_home = tmp_path / "home"
+    env = dict(os.environ)
+    env["HOME"] = str(fake_home)
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+    submitted_branch = "codex/submitted-branch-binding"
+    result = subprocess.run(
+        [
+            "bash",
+            str(remote_script),
+            "experiment",
+            "run-tag",
+            "evaluation-tag",
+            submitted_branch,
+            "a" * 40,
+            "b" * 64,
+            "c" * 40,
+            "d" * 64,
+            "2",
+            str(remote_project),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 37
+    assert (
+        f"FAKE_GIT|fetch|--quiet|origin|{submitted_branch}\n" in result.stdout
+    )
+    assert list(remote_project.iterdir()) == []
+    assert not fake_home.exists()
