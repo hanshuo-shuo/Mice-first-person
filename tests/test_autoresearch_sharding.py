@@ -628,6 +628,9 @@ def test_cli_has_no_seed_horizon_or_artifact_override_and_scripts_are_safe():
         assert "expected_incumbent_source" in script
         assert "${incumbent_sha256}" in script
         assert "authorize-one-time-confirmation" not in script
+        assert 'worktree_commit="${project_dir##*/}"' in script
+        assert "git rev-parse" not in script
+        assert "git status" not in script
     assert "git status --porcelain" in submit_script
     assert "git diff --quiet" in remote_submit_script
     assert "git diff --cached --quiet" in remote_submit_script

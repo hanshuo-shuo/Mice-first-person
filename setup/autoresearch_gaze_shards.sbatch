@@ -90,12 +90,14 @@ else
 fi
 
 cd "${project_dir}"
-if [[ "$(git rev-parse HEAD)" != "${git_commit}" ]]; then
-    echo "Error: Quest checkout does not match submitted commit." >&2
+worktree_commit="${project_dir##*/}"
+if [[ "${worktree_commit}" != "${git_commit}" || ! -f "${project_dir}/.git" ]]; then
+    echo "Error: Quest commit worktree identity does not match submission." >&2
     exit 1
 fi
-if [[ -n "$(git status --porcelain)" ]]; then
-    echo "Error: Quest checkout is not clean." >&2
+IFS= read -r gitdir_line < "${project_dir}/.git"
+if [[ "${gitdir_line}" != "gitdir: "* ]]; then
+    echo "Error: Quest project is not a detached commit worktree." >&2
     exit 1
 fi
 if [[ ! -f "${config_path}" || ! -f "${candidate_source}" || ! -f "${incumbent_source}" ]]; then
